@@ -15,6 +15,7 @@ wandb/
 
 # Data & Configs (usually kept local)
 data/
+GEMINI.md
 
 
 # Notebooks

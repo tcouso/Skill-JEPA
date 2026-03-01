@@ -2,7 +2,7 @@
 data_dir: "data/easy"
 batch_size: 4
 train_ratio: 0.8
-num_workers: 4
+num_workers: 7
 seed: 42
 
 # Model (Tiny version)
@@ -19,7 +19,9 @@ decoder_num_layers: 1
 # Training
 learning_rate: 1.5e-4
 weight_decay: 0.05
-max_epochs: 4
+max_epochs: 20
+log_every_n_steps: 5
+recon_log_every_n_steps: 50
 
 # Compute
 accelerator: "cpu"

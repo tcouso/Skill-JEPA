@@ -37,6 +37,7 @@ class ActSiamMAEConfig:
     devices: int = -1
     strategy: str = "ddp"
     log_every_n_steps: int = 10
+    recon_log_every_n_steps: int = 100
 
     @classmethod
     def from_yaml(cls, path: str):
