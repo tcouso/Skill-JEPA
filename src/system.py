@@ -2,7 +2,7 @@ import torch
 import pytorch_lightning as pl
 import torch.nn.functional as F
 
-from src.model import ActSiamMAEConfig, ActSiamMAEEncoder, ActSiamMAEDecoder
+from src.model import ActSiamMAEConfig, ActSiamMAEEncoder, ActSiamMAEDecoder, ActSiamMAEDepatchifier
 
 class ActSiamMAESystem(pl.LightningModule):
     def __init__(self, config: ActSiamMAEConfig):
@@ -13,14 +13,12 @@ class ActSiamMAESystem(pl.LightningModule):
         self.frame_size = config.frame_size
         self.encoder = ActSiamMAEEncoder(config)
         self.decoder = ActSiamMAEDecoder(config)
+        self.depatchifier = ActSiamMAEDepatchifier(config)
 
     def _shared_step(self, batch) -> torch.Tensor:
         past_frames = batch['images'][:, :-1, :, :, :].permute(0, 1, 4, 2, 3).reshape(-1, self.num_channels, self.frame_size, self.frame_size).float()
         future_frames = batch['images'][:, 1:, :, :, :].permute(0, 1, 4, 2, 3).reshape(-1, self.num_channels, self.frame_size, self.frame_size).float()
         
-        # NOTE: Velocities are currently unused in the architecture, but prepared for ActSiamMAE integration
-        # velocities = batch['actions'].reshape(-1, 3) 
-
         past_embeddings, future_embeddings, mask, ids_restore = self.encoder(past_frames, future_frames)
         future_patches = self.encoder.patch_layer(future_frames)
         pred_patches = self.decoder(past_embeddings, future_embeddings, ids_restore)
@@ -28,17 +26,34 @@ class ActSiamMAESystem(pl.LightningModule):
         loss = F.mse_loss(pred_patches[mask.bool()], future_patches[mask.bool()])
         return loss
 
-    def training_step(self, batch, batch_idx) -> torch.Tensor:
+    def training_step(self, batch) -> torch.Tensor:
         loss = self._shared_step(batch)
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
 
         return loss
 
-    def validation_step(self, batch, batch_idx) -> torch.Tensor:
+    def validation_step(self, batch) -> torch.Tensor:
         loss = self._shared_step(batch)
         self.log("val_loss", loss, on_epoch=True, prog_bar=True, sync_dist=True)
 
         return loss
+
+    def reconstruct(self, batch):
+        past_frames = batch['images'][:, :-1, :, :, :].permute(0, 1, 4, 2, 3).reshape(-1, self.num_channels, self.frame_size, self.frame_size).float()
+        future_frames = batch['images'][:, 1:, :, :, :].permute(0, 1, 4, 2, 3).reshape(-1, self.num_channels, self.frame_size, self.frame_size).float()
+
+        past_embeddings, future_embeddings, mask, ids_restore = self.encoder(past_frames, future_frames)
+        pred_patches = self.decoder(past_embeddings, future_embeddings, ids_restore)
+        
+        future_patches = self.encoder.patch_layer(future_frames)
+        
+        masked_patches = future_patches.clone()
+        masked_patches[mask.bool()] = 0.0
+        
+        reconstructed_frames = self.depatchifier(pred_patches)
+        masked_frames = self.depatchifier(masked_patches)
+        
+        return past_frames, future_frames, masked_frames, reconstructed_frames
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         return torch.optim.AdamW(
@@ -86,7 +101,7 @@ if __name__ == "__main__":
         print(f"Velocities (Flattened):   {flatten_velocities.shape}")
         
         print("\n--- Running System.training_step() ---")
-        loss = system.training_step(batch, 0)
+        loss = system.training_step(batch)
         print(f"Loss successfully calculated: {loss.item()}")
         
     else:

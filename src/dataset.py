@@ -10,10 +10,11 @@ class PlatonicSample(TypedDict):
     states: torch.Tensor
 
 class PlatonicSolidsDataset(Dataset):
-    def __init__(self, data: Dict[str, List]):
+    def __init__(self, data: Dict[str, List], transform=None):
         self.images = torch.tensor(data["images"], dtype=torch.uint8)
         self.actions = torch.tensor(data["actions"], dtype=torch.float32)
         self.states = torch.tensor(data["states"], dtype=torch.float32)
+        self.transform = transform
 
     def __len__(self):
         return len(self.images)
@@ -25,6 +26,9 @@ class PlatonicSolidsDataset(Dataset):
             "states": self.states[index],
         }
         sample = PlatonicSample(**sample_data)
+
+        if self.transform:
+            sample = self.transform(sample)
 
         return sample
 
