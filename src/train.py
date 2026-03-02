@@ -1,3 +1,4 @@
+import time
 import argparse
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -28,7 +29,14 @@ def main(args):
     wandb_logger = WandbLogger(**wandb_kwargs)
     wandb_logger.experiment.config.update(vars(config))
 
+    print(f"[Forensics] Starting to read 50k dataset at {time.strftime('%X')}...", flush=True)
+    t0 = time.time()
+    
     full_dataset = read_platonic_solids_dataset(config.data_dir)
+    
+    print(f"[Forensics] Dataset reading completed in {time.time() - t0:.2f} seconds.", flush=True)
+    print(f"[Forensics] Initializing DataModule...", flush=True)
+    
     data_module = PlatonicDataModule(
         full_dataset, 
         batch_size=config.batch_size,

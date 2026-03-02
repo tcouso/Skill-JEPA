@@ -1,3 +1,4 @@
+import json
 import numpy as np
 import pyvista as pv
 import random as rd
@@ -5,6 +6,7 @@ import argparse
 import os
 import math
 from typing import Tuple, List
+from PIL import Image
 
 MIN_R = 2.0
 MAX_R = 6.0
@@ -144,11 +146,6 @@ def generate_raw_dataset(
     for shard_idx in range(total_shards):
         current_shard_size = min(shard_size, num_trajectories - traj_global_count)
 
-        shard_images = []
-        shard_actions = []
-        shard_states = []
-        shard_shape_ids = []
-
         if shape_arg == "mixed":
             assigned_shapes = [
                 SHAPE_NAMES[i % len(SHAPE_NAMES)] for i in range(current_shard_size)
@@ -206,28 +203,25 @@ def generate_raw_dataset(
                 traj_states.append(state)
                 traj_vels.append(vel)
 
-            shard_images.append(np.array(traj_imgs, dtype=np.uint8))
-            shard_actions.append(np.array(traj_vels, dtype=np.float32))
-            shard_states.append(np.array(traj_states, dtype=np.float32))
-            shard_shape_ids.append(current_shape_id)
+            # I/O Flush to Hardware
+            base_name = f"traj_{traj_global_count:06d}"
+            
+            for f_idx, frame_arr in enumerate(traj_imgs):
+                img_path = os.path.join(output_dir, f"{base_name}.frame_{f_idx:03d}.jpg")
+                Image.fromarray(frame_arr).save(img_path, quality=95)
+
+            np.save(os.path.join(output_dir, f"{base_name}.actions.npy"), np.array(traj_vels, dtype=np.float32))
+            np.save(os.path.join(output_dir, f"{base_name}.states.npy"), np.array(traj_states, dtype=np.float32))
+            
+            with open(os.path.join(output_dir, f"{base_name}.meta.json"), "w") as f:
+                json.dump({"shape_id": current_shape_id, "shape_name": current_shape_name}, f)
 
             traj_global_count += 1
-            print(f"  [Shard {shard_idx}] {i+1}/{current_shard_size}", end="\r")
+            print(f"  [I/O] Flushed {base_name} to disk | Shard Block {shard_idx + 1}/{total_shards} | {i+1}/{current_shard_size}", end="\r")
 
-        save_name = f"shard{shard_idx:03d}.npz"
-        save_path = os.path.join(output_dir, save_name)
-
-        np.savez_compressed(
-            save_path,
-            images=np.array(shard_images),
-            actions=np.array(shard_actions),
-            states=np.array(shard_states),
-            shape_ids=np.array(shard_shape_ids),
-        )
-        print(f"\n  Saved: {save_path}")
-
+    print("\n")
     pl.close()
-    print(f"Done. {traj_global_count} trajectories generated.")
+    print(f"Done. {traj_global_count} trajectories generated as raw media.")
 
 
 if __name__ == "__main__":

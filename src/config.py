@@ -2,6 +2,7 @@ import torch
 import yaml
 from dataclasses import dataclass, fields
 
+# TODO: bf16 precision param for optimized H100 training
 
 @dataclass
 class ActSiamMAEConfig:

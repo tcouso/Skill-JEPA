@@ -1,0 +1,19 @@
+# Data & I/O
+data_dir: "/workspace1/tcouso/active_siam_mae/data/platonic_mixed_n50k_seq20_224px_rgb"
+batch_size: 64
+num_workers: 7
+
+# Model
+hidden_dim: 512
+masking_ratio: 0.75
+
+# Training
+batch_size: 128
+learning_rate: 0.00015
+max_epochs: 400
+recon_log_every_n_steps: 1000
+
+# Compute & Hardware Routing
+accelerator: "gpu"
+devices: 1
+strategy: "auto"
