@@ -28,7 +28,8 @@ dependencies = [
     "tqdm",
     "pillow",
     "timm",        
-    "networkx"
+    "networkx",
+    "pyvista"
 ]
 
 [project.optional-dependencies]
