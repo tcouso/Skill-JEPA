@@ -1,11 +1,9 @@
 import math
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
 from typing import Tuple
 
 from src.config import ActSiamMAEConfig
-from src.dataset import read_platonic_solids_dataset
 
 
 def generate_pos_embeddings(
@@ -301,28 +299,3 @@ class ActSiamMAEDecoder(nn.Module):
         patches = self.output_layer(future_embeddings)
 
         return patches
-
-
-if __name__ == "__main__":
-    print("Test run")
-    dataset = read_platonic_solids_dataset("data/medium_data/")
-
-    train_loader = DataLoader(
-        dataset,
-        batch_size=2,
-        shuffle=True,
-    )
-
-    batch = next(iter(train_loader))
-    config = ActSiamMAEConfig()
-
-    encoder = ActSiamMAEEncoder(config)
-    decoder = ActSiamMAEDecoder(config)
-
-    past_frame = batch["images"][:, 0, :, :, :].permute(0, 3, 1, 2).float()
-    future_frame = batch["images"][:, 1, :, :, :].permute(0, 3, 1, 2).float()
-
-    past_embeddings, future_embeddings, mask, ids_restore = encoder(past_frame, future_frame)
-    patches = decoder(past_embeddings, future_embeddings, ids_restore)
-
-    print(patches.shape)

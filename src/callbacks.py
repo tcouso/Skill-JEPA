@@ -3,11 +3,14 @@ import wandb
 import torchvision
 from pytorch_lightning.callbacks import Callback
 
+from src.config import ActSiamMAEConfig
+
 class WandbReconstructionCallback(Callback):
-    def __init__(self, log_every_n_steps: int = 100, num_samples: int = 4):
+    def __init__(self, config: ActSiamMAEConfig):
         super().__init__()
-        self.log_every_n_steps = log_every_n_steps
-        self.num_samples = num_samples
+        self.config = config
+        self.log_every_n_steps = config.log_every_n_steps
+        self.num_samples = config.recon_num_samples
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         _ = outputs
@@ -17,8 +20,10 @@ class WandbReconstructionCallback(Callback):
 
     def _log_reconstruction(self, trainer, pl_module, batch):
         pl_module.eval()
+
         with torch.no_grad():
             past, future, masked, reconstructed = pl_module.reconstruct(batch)
+
         pl_module.train()
 
         past = past[:self.num_samples].clamp(0, 1)

@@ -4,7 +4,6 @@ import pyvista as pv
 import random as rd
 import argparse
 import os
-import math
 from typing import Tuple, List
 from PIL import Image
 
@@ -104,7 +103,6 @@ def apply_action_and_get_image(
     ry_final = ry0 + (vy * MAX_DEG_PER_STEP)
     rx_final = rx0 + (vx * MAX_DEG_PER_STEP)
 
-    # Clamping zoom based on arm length restriction
     r = ((MAX_R + MIN_R) / 2) + (d_final * (MAX_R - MIN_R) / 2)
 
     plotter.camera.position = (0, 0, r)
@@ -122,7 +120,6 @@ def apply_action_and_get_image(
 def generate_raw_dataset(
     output_dir: str,
     num_trajectories: int,
-    shard_size: int,
     trajectory_length: int,
     resolution: int,
     shape_arg: str,
@@ -136,101 +133,89 @@ def generate_raw_dataset(
     pl.set_background("white")
     pl.hide_axes()
 
-    total_shards = math.ceil(num_trajectories / shard_size)
-    print(
-        f"Generating {num_trajectories} trajectories ({shape_arg}) across {total_shards} shards."
-    )
+    print(f"Generating {num_trajectories} trajectories ({shape_arg}).")
 
-    traj_global_count = 0
+    if shape_arg == "mixed":
+        assigned_shapes = [
+            SHAPE_NAMES[i % len(SHAPE_NAMES)] for i in range(num_trajectories)
+        ]
+        rd.shuffle(assigned_shapes)
+    else:
+        assigned_shapes = [shape_arg] * num_trajectories
 
-    for shard_idx in range(total_shards):
-        current_shard_size = min(shard_size, num_trajectories - traj_global_count)
+    for i in range(num_trajectories):
+        traj_imgs = []
+        traj_vels = []
+        traj_states = []
 
-        if shape_arg == "mixed":
-            assigned_shapes = [
-                SHAPE_NAMES[i % len(SHAPE_NAMES)] for i in range(current_shard_size)
-            ]
-            rd.shuffle(assigned_shapes)
+        current_shape_name = assigned_shapes[i]
+        current_shape_id = SHAPE_REGISTRY[current_shape_name]
+
+        pl.clear_actors()
+        mesh = get_mesh(current_shape_name)
+
+        if monochromatic:
+            actor = pl.add_mesh(mesh, color="white", show_edges=True, line_width=2)
         else:
-            assigned_shapes = [shape_arg] * current_shard_size
+            if "face_ids" not in mesh.cell_data:
+                mesh.cell_data["face_ids"] = np.arange(mesh.n_cells)
 
-        for i in range(current_shard_size):
-            traj_imgs = []
-            traj_vels = []
-            traj_states = []
+            actor = pl.add_mesh(
+                mesh,
+                show_edges=True,
+                line_width=2,
+                cmap="tab20",
+                scalars="face_ids",
+                preference="cell",
+                show_scalar_bar=False,
+            )
 
-            current_shape_name = assigned_shapes[i]
-            current_shape_id = SHAPE_REGISTRY[current_shape_name]
+        start_d = rd.uniform(-1, 1)
+        start_ry = rd.uniform(0, 360)
+        start_rx = rd.uniform(0, 360)
+        state = (start_d, start_ry, start_rx)
 
-            pl.clear_actors()
-            mesh = get_mesh(current_shape_name)
+        img, state = apply_action_and_get_image(pl, actor, state, (0.0, 0.0, 0.0))
+        traj_imgs.append(img)
+        traj_states.append(state)
 
-            if monochromatic:
-                actor = pl.add_mesh(mesh, color="white", show_edges=True, line_width=2)
-            else:
-                if "face_ids" not in mesh.cell_data:
-                    mesh.cell_data["face_ids"] = np.arange(mesh.n_cells)
+        if repeated_vel:
+            velocities = repeated_vel_closed_loop_trajectory(trajectory_length, state)
+        else:
+            velocities = closed_loop_trajectory(trajectory_length, state)
 
-                actor = pl.add_mesh(
-                    mesh,
-                    show_edges=True,
-                    line_width=2,
-                    cmap="tab20",
-                    scalars="face_ids",
-                    preference="cell",
-                    show_scalar_bar=False,
-                )
-
-            start_d = rd.uniform(-1, 1)
-            start_ry = rd.uniform(0, 360)
-            start_rx = rd.uniform(0, 360)
-            state = (start_d, start_ry, start_rx)
-
-            img, state = apply_action_and_get_image(pl, actor, state, (0.0, 0.0, 0.0))
+        for vel in velocities:
+            img, state = apply_action_and_get_image(pl, actor, state, vel)
             traj_imgs.append(img)
             traj_states.append(state)
+            traj_vels.append(vel)
 
-            if repeated_vel:
-                velocities = repeated_vel_closed_loop_trajectory(
-                    trajectory_length, state
-                )
-            else:
-                velocities = closed_loop_trajectory(trajectory_length, state)
+        # I/O Flush to Hardware
+        base_name = f"traj_{i:06d}"
+        
+        for f_idx, frame_arr in enumerate(traj_imgs):
+            img_path = os.path.join(output_dir, f"{base_name}.frame_{f_idx:03d}.jpg")
+            Image.fromarray(frame_arr).save(img_path, quality=95)
 
-            for vel in velocities:
-                img, state = apply_action_and_get_image(pl, actor, state, vel)
-                traj_imgs.append(img)
-                traj_states.append(state)
-                traj_vels.append(vel)
+        np.save(os.path.join(output_dir, f"{base_name}.actions.npy"), np.array(traj_vels, dtype=np.float32))
+        np.save(os.path.join(output_dir, f"{base_name}.states.npy"), np.array(traj_states, dtype=np.float32))
+        
+        with open(os.path.join(output_dir, f"{base_name}.meta.json"), "w") as f:
+            json.dump({"shape_id": current_shape_id, "shape_name": current_shape_name}, f)
 
-            # I/O Flush to Hardware
-            base_name = f"traj_{traj_global_count:06d}"
-            
-            for f_idx, frame_arr in enumerate(traj_imgs):
-                img_path = os.path.join(output_dir, f"{base_name}.frame_{f_idx:03d}.jpg")
-                Image.fromarray(frame_arr).save(img_path, quality=95)
-
-            np.save(os.path.join(output_dir, f"{base_name}.actions.npy"), np.array(traj_vels, dtype=np.float32))
-            np.save(os.path.join(output_dir, f"{base_name}.states.npy"), np.array(traj_states, dtype=np.float32))
-            
-            with open(os.path.join(output_dir, f"{base_name}.meta.json"), "w") as f:
-                json.dump({"shape_id": current_shape_id, "shape_name": current_shape_name}, f)
-
-            traj_global_count += 1
-            print(f"  [I/O] Flushed {base_name} to disk | Shard Block {shard_idx + 1}/{total_shards} | {i+1}/{current_shard_size}", end="\r")
+        print(f"  [I/O] Flushed {base_name} to disk | Progress: {i+1}/{num_trajectories}", end="\r")
 
     print("\n")
     pl.close()
-    print(f"Done. {traj_global_count} trajectories generated as raw media.")
+    print(f"Done. {num_trajectories} trajectories generated as raw media.")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--num_trajs", type=int, default=100)
-    parser.add_argument("--shard_size", type=int, default=50)
     parser.add_argument("--length", type=int, default=20)
     parser.add_argument("--resolution", type=int, default=224)
-    parser.add_argument("--output_dir", type=str, default="./data/medium_data")
+    parser.add_argument("--output_dir", type=str, default="../sample_trajectories/train")
     parser.add_argument("--monochromatic", action="store_true")
     parser.add_argument(
         "--shape", type=str, default="icosahedron", choices=SHAPE_NAMES + ["mixed"]
@@ -242,7 +227,6 @@ if __name__ == "__main__":
     generate_raw_dataset(
         args.output_dir,
         args.num_trajs,
-        args.shard_size,
         args.length,
         args.resolution,
         args.shape,

@@ -8,9 +8,13 @@ from dataclasses import dataclass, fields
 class ActSiamMAEConfig:
     # General parameters
     seed: int = 42
-    data_dir: str = "data/medium_data/"
-    train_ratio: float = 0.8
+    train_urls: str = "data/wds_sample_trajectories/train/platonic-{0000..0003}.tar"
+    val_urls: str = "data/wds_sample_trajectories/val/platonic-0000.tar"
     num_workers: int = 4
+
+    # WebDataset Streaming Hyperparameters
+    wds_shard_shuffle_size: int = 100   # Macro: Number of .tar URLs to hold and shuffle
+    wds_sample_shuffle_size: int = 1000 # Micro: Number of decoded trajectories in RAM buffer
 
     # Model Hyperparameters
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
@@ -39,13 +43,13 @@ class ActSiamMAEConfig:
     strategy: str = "ddp"
     log_every_n_steps: int = 10
     recon_log_every_n_steps: int = 100
+    recon_num_samples: int = 4
 
     @classmethod
     def from_yaml(cls, path: str):
         with open(path, 'r') as f:
             data = yaml.safe_load(f)
         
-        # Only pass keys that actually exist in the dataclass
         valid_keys = {f.name for f in fields(cls)}
         config_dict = {k: v for k, v in data.items() if k in valid_keys}
         return cls(**config_dict)

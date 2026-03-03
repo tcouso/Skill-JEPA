@@ -1,4 +1,3 @@
-import time
 import argparse
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -7,7 +6,6 @@ from pytorch_lightning.loggers import WandbLogger
 from src.config import ActSiamMAEConfig
 from src.datamodule import PlatonicDataModule
 from src.system import ActSiamMAESystem
-from src.dataset import read_platonic_solids_dataset
 from src.callbacks import WandbReconstructionCallback
 
 def main(args):
@@ -28,22 +26,8 @@ def main(args):
 
     wandb_logger = WandbLogger(**wandb_kwargs)
     wandb_logger.experiment.config.update(vars(config))
-
-    print(f"[Forensics] Starting to read 50k dataset at {time.strftime('%X')}...", flush=True)
-    t0 = time.time()
     
-    full_dataset = read_platonic_solids_dataset(config.data_dir)
-    
-    print(f"[Forensics] Dataset reading completed in {time.time() - t0:.2f} seconds.", flush=True)
-    print(f"[Forensics] Initializing DataModule...", flush=True)
-    
-    data_module = PlatonicDataModule(
-        full_dataset, 
-        batch_size=config.batch_size,
-        train_ratio=config.train_ratio,
-        num_workers=config.num_workers,
-        seed=config.seed
-    )
+    data_module = PlatonicDataModule(config)
 
     checkpoint_callback = ModelCheckpoint(
         monitor="val_loss",
@@ -53,10 +37,7 @@ def main(args):
         mode="min",
     )
 
-    reconstruction_callback = WandbReconstructionCallback(
-        log_every_n_steps=config.recon_log_every_n_steps,
-        num_samples=4
-    )
+    reconstruction_callback = WandbReconstructionCallback(config)
 
     trainer = pl.Trainer(
         max_epochs=config.max_epochs,
