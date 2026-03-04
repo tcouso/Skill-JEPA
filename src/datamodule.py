@@ -6,20 +6,25 @@ from typing import TypedDict
 
 from src.config import ActSiamMAEConfig
 
+
 class PlatonicSample(TypedDict):
     images: torch.Tensor
     actions: torch.Tensor
     states: torch.Tensor
 
+
 def _process_wds_dict(sample) -> PlatonicSample:
-    frame_keys = sorted([k for k in sample.keys() if "frame_" in k and k.endswith(".jpg")])
+    frame_keys = sorted(
+        [k for k in sample.keys() if "frame_" in k and k.endswith(".jpg")]
+    )
     images = torch.stack([sample[k] for k in frame_keys])
-    
+
     return {
         "images": images,
         "actions": torch.from_numpy(sample["actions.npy"]),
         "states": torch.from_numpy(sample["states.npy"]),
     }
+
 
 class PlatonicDataModule(pl.LightningDataModule):
     def __init__(self, config: ActSiamMAEConfig):
@@ -35,23 +40,25 @@ class PlatonicDataModule(pl.LightningDataModule):
         pipeline = [
             wds.SimpleShardList(urls),
         ]
-        
+
         if is_train:
             pipeline.append(wds.shuffle(self.wds_shard_shuffle_size))
 
-        pipeline.extend([
-            wds.split_by_node,
-            wds.split_by_worker,
-            wds.tarfile_to_samples(),
-            wds.decode("torchrgb"), 
-            wds.map(_process_wds_dict)
-        ])
+        pipeline.extend(
+            [
+                wds.split_by_node,
+                wds.split_by_worker,
+                wds.tarfile_to_samples(),
+                wds.decode("torchrgb"),
+                wds.map(_process_wds_dict),
+            ]
+        )
 
         if is_train:
             pipeline.append(wds.shuffle(self.wds_sample_shuffle_size))
 
         pipeline.append(wds.batched(self.batch_size, partial=False))
-        
+
         return wds.DataPipeline(*pipeline)
 
     def setup(self, stage: str = None) -> None:
@@ -60,17 +67,11 @@ class PlatonicDataModule(pl.LightningDataModule):
     def train_dataloader(self) -> DataLoader:
         dataset = self._build_pipeline(self.train_urls, is_train=True)
         return wds.WebLoader(
-            dataset, 
-            batch_size=None, 
-            num_workers=self.num_workers, 
-            pin_memory=True
+            dataset, batch_size=None, num_workers=self.num_workers, pin_memory=True
         )
 
     def val_dataloader(self) -> DataLoader:
         dataset = self._build_pipeline(self.val_urls, is_train=False)
         return wds.WebLoader(
-            dataset, 
-            batch_size=None, 
-            num_workers=self.num_workers, 
-            pin_memory=True
+            dataset, batch_size=None, num_workers=self.num_workers, pin_memory=True
         )

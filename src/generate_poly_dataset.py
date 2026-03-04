@@ -6,6 +6,7 @@ import argparse
 import os
 from typing import Tuple, List
 from PIL import Image
+from tqdm import tqdm
 
 MIN_R = 2.0
 MAX_R = 6.0
@@ -94,7 +95,7 @@ def apply_action_and_get_image(
     actor: pv.Actor,
     current_state: Tuple[float, float, float],
     action_vel: Tuple[float, float, float],
-) -> Tuple[np.ndarray, Tuple[float, float, float]]:
+) -> Tuple[pv.pyvista_ndarray, Tuple[float, float, float]]:
 
     d0, ry0, rx0 = current_state
     vd, vy, vx = action_vel
@@ -143,7 +144,7 @@ def generate_raw_dataset(
     else:
         assigned_shapes = [shape_arg] * num_trajectories
 
-    for i in range(num_trajectories):
+    for i in tqdm(range(num_trajectories), desc="Generating trajectories"):
         traj_imgs = []
         traj_vels = []
         traj_states = []
@@ -190,32 +191,38 @@ def generate_raw_dataset(
             traj_states.append(state)
             traj_vels.append(vel)
 
-        # I/O Flush to Hardware
         base_name = f"traj_{i:06d}"
-        
+
         for f_idx, frame_arr in enumerate(traj_imgs):
             img_path = os.path.join(output_dir, f"{base_name}.frame_{f_idx:03d}.jpg")
             Image.fromarray(frame_arr).save(img_path, quality=95)
 
-        np.save(os.path.join(output_dir, f"{base_name}.actions.npy"), np.array(traj_vels, dtype=np.float32))
-        np.save(os.path.join(output_dir, f"{base_name}.states.npy"), np.array(traj_states, dtype=np.float32))
-        
+        np.save(
+            os.path.join(output_dir, f"{base_name}.actions.npy"),
+            np.array(traj_vels, dtype=np.float32),
+        )
+        np.save(
+            os.path.join(output_dir, f"{base_name}.states.npy"),
+            np.array(traj_states, dtype=np.float32),
+        )
+
         with open(os.path.join(output_dir, f"{base_name}.meta.json"), "w") as f:
-            json.dump({"shape_id": current_shape_id, "shape_name": current_shape_name}, f)
+            json.dump(
+                {"shape_id": current_shape_id, "shape_name": current_shape_name}, f
+            )
 
-        print(f"  [I/O] Flushed {base_name} to disk | Progress: {i+1}/{num_trajectories}", end="\r")
-
-    print("\n")
     pl.close()
     print(f"Done. {num_trajectories} trajectories generated as raw media.")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--num_trajs", type=int, default=100)
+    parser.add_argument("--num_trajs", type=int, default=4_500)
     parser.add_argument("--length", type=int, default=20)
     parser.add_argument("--resolution", type=int, default=224)
-    parser.add_argument("--output_dir", type=str, default="../sample_trajectories/train")
+    parser.add_argument(
+        "--output_dir", type=str, default="../mixed_shapes_color_100k/train"
+    )
     parser.add_argument("--monochromatic", action="store_true")
     parser.add_argument(
         "--shape", type=str, default="icosahedron", choices=SHAPE_NAMES + ["mixed"]

@@ -8,25 +8,22 @@ from src.datamodule import PlatonicDataModule
 from src.system import ActSiamMAESystem
 from src.callbacks import WandbReconstructionCallback
 
+
 def main(args):
-    config = ActSiamMAEConfig.from_yaml(args.config)    
+    config = ActSiamMAEConfig.from_yaml(args.config)
     pl.seed_everything(config.seed, workers=True)
 
     run_name = f"ActSiamMAE_mask{config.masking_ratio}_dim{config.hidden_dim}_lay{config.encoder_num_layers}"
-    
-    wandb_kwargs = {
-        "project": "ActiveSiamMAE",
-        "name": run_name,
-        "log_model": "all"
-    }
-    
+
+    wandb_kwargs = {"project": "ActiveSiamMAE", "name": run_name, "log_model": "all"}
+
     if args.resume_id:
         wandb_kwargs["id"] = args.resume_id
         wandb_kwargs["resume"] = "must"
 
     wandb_logger = WandbLogger(**wandb_kwargs)
     wandb_logger.experiment.config.update(vars(config))
-    
+
     data_module = PlatonicDataModule(config)
 
     checkpoint_callback = ModelCheckpoint(
@@ -51,9 +48,14 @@ def main(args):
     system = ActSiamMAESystem(config)
     trainer.fit(system, datamodule=data_module, ckpt_path=args.ckpt_path)
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, required=True, help="Path to config.yaml")
-    parser.add_argument("--ckpt_path", type=str, default=None, help="Path to checkpoint to resume from")
-    parser.add_argument("--resume_id", type=str, default=None, help="WandB run ID to resume")
+    parser.add_argument(
+        "--ckpt_path", type=str, default=None, help="Path to checkpoint to resume from"
+    )
+    parser.add_argument(
+        "--resume_id", type=str, default=None, help="WandB run ID to resume"
+    )
     main(parser.parse_args())

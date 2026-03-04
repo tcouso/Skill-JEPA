@@ -4,6 +4,7 @@ from dataclasses import dataclass, fields
 
 # TODO: bf16 precision param for optimized H100 training
 
+
 @dataclass
 class ActSiamMAEConfig:
     # General parameters
@@ -13,8 +14,10 @@ class ActSiamMAEConfig:
     num_workers: int = 4
 
     # WebDataset Streaming Hyperparameters
-    wds_shard_shuffle_size: int = 100   # Macro: Number of .tar URLs to hold and shuffle
-    wds_sample_shuffle_size: int = 1000 # Micro: Number of decoded trajectories in RAM buffer
+    wds_shard_shuffle_size: int = 100  # Macro: Number of .tar URLs to hold and shuffle
+    wds_sample_shuffle_size: int = (
+        1000  # Micro: Number of decoded trajectories in RAM buffer
+    )
 
     # Model Hyperparameters
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
@@ -47,9 +50,10 @@ class ActSiamMAEConfig:
 
     @classmethod
     def from_yaml(cls, path: str):
-        with open(path, 'r') as f:
+        with open(path, "r") as f:
             data = yaml.safe_load(f)
-        
+
         valid_keys = {f.name for f in fields(cls)}
         config_dict = {k: v for k, v in data.items() if k in valid_keys}
+
         return cls(**config_dict)

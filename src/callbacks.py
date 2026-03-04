@@ -5,6 +5,7 @@ from pytorch_lightning.callbacks import Callback
 
 from src.config import ActSiamMAEConfig
 
+
 class WandbReconstructionCallback(Callback):
     def __init__(self, config: ActSiamMAEConfig):
         super().__init__()
@@ -26,22 +27,26 @@ class WandbReconstructionCallback(Callback):
 
         pl_module.train()
 
-        past = past[:self.num_samples].clamp(0, 1)
-        future = future[:self.num_samples].clamp(0, 1)
-        masked = masked[:self.num_samples].clamp(0, 1)
-        reconstructed = reconstructed[:self.num_samples].clamp(0, 1)
+        past = past[: self.num_samples].clamp(0, 1)
+        future = future[: self.num_samples].clamp(0, 1)
+        masked = masked[: self.num_samples].clamp(0, 1)
+        reconstructed = reconstructed[: self.num_samples].clamp(0, 1)
 
         grid_rows = []
         for i in range(self.num_samples):
             row = torch.stack([past[i], future[i], masked[i], reconstructed[i]])
             grid_rows.append(torchvision.utils.make_grid(row, nrow=4, padding=2))
-        
-        final_grid = torchvision.utils.make_grid(torch.stack(grid_rows), nrow=1, padding=4)
 
-        trainer.logger.experiment.log({
-            "reconstructions": wandb.Image(
-                final_grid, 
-                caption="Columns: Past(t) | Future(t+1) | Masked | Reconstructed"
-            ),
-            "global_step": trainer.global_step
-        })
+        final_grid = torchvision.utils.make_grid(
+            torch.stack(grid_rows), nrow=1, padding=4
+        )
+
+        trainer.logger.experiment.log(
+            {
+                "reconstructions": wandb.Image(
+                    final_grid,
+                    caption="Columns: Past(t) | Future(t+1) | Masked | Reconstructed",
+                ),
+                "global_step": trainer.global_step,
+            }
+        )
