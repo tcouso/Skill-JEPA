@@ -35,7 +35,7 @@ class ActSiamMAEConfig:
 
     # Training Hyperparameters
     batch_size: int = 64
-    learning_rate: float = 1.5e-4
+    learning_rate: float = 1e-5
     weight_decay: float = 0.05
     max_epochs: int = 800
     warmup_epochs: int = 40

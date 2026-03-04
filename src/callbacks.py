@@ -10,13 +10,13 @@ class WandbReconstructionCallback(Callback):
     def __init__(self, config: ActSiamMAEConfig):
         super().__init__()
         self.config = config
-        self.log_every_n_steps = config.log_every_n_steps
+        self.recon_log_every_n_steps = config.recon_log_every_n_steps
         self.num_samples = config.recon_num_samples
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         _ = outputs
         _ = batch_idx
-        if (trainer.global_step + 1) % self.log_every_n_steps == 0:
+        if (trainer.global_step + 1) % self.recon_log_every_n_steps == 0:
             self._log_reconstruction(trainer, pl_module, batch)
 
     def _log_reconstruction(self, trainer, pl_module, batch):

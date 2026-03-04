@@ -13,7 +13,7 @@ def main(args):
     config = ActSiamMAEConfig.from_yaml(args.config)
     pl.seed_everything(config.seed, workers=True)
 
-    run_name = f"ActSiamMAE_mask{config.masking_ratio}_dim{config.hidden_dim}_lay{config.encoder_num_layers}"
+    run_name = f"ActSiamMAE_mask{config.masking_ratio}_bs{config.batch_size}_lr{config.learning_rate}"
 
     wandb_kwargs = {"project": "ActiveSiamMAE", "name": run_name, "log_model": "all"}
 
