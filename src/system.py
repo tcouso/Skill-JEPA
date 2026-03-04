@@ -16,8 +16,8 @@ class ActSiamMAESystem(pl.LightningModule):
         self.depatchifier = ActSiamMAEDepatchifier(config)
 
     def _shared_step(self, batch) -> torch.Tensor:
-        past_frames = batch['images'][:, :-1, :, :, :].permute(0, 1, 4, 2, 3).reshape(-1, self.num_channels, self.frame_size, self.frame_size).float()
-        future_frames = batch['images'][:, 1:, :, :, :].permute(0, 1, 4, 2, 3).reshape(-1, self.num_channels, self.frame_size, self.frame_size).float()
+        past_frames = batch['images'][:, :-1, :, :, :].reshape(-1, self.num_channels, self.frame_size, self.frame_size).float()
+        future_frames = batch['images'][:, 1:, :, :, :].reshape(-1, self.num_channels, self.frame_size, self.frame_size).float()
         
         past_embeddings, future_embeddings, mask, ids_restore = self.encoder(past_frames, future_frames)
         future_patches = self.encoder.patch_layer(future_frames)
@@ -39,10 +39,9 @@ class ActSiamMAESystem(pl.LightningModule):
         return loss
 
     def reconstruct(self, batch):
-        # TODO: There is a possible mistake here, related to the pink rendering in reconstruction
         
-        past_frames = batch['images'][:, :-1, :, :, :].permute(0, 1, 4, 2, 3).reshape(-1, self.num_channels, self.frame_size, self.frame_size).float()
-        future_frames = batch['images'][:, 1:, :, :, :].permute(0, 1, 4, 2, 3).reshape(-1, self.num_channels, self.frame_size, self.frame_size).float()
+        past_frames = batch['images'][:, :-1, :, :, :].reshape(-1, self.num_channels, self.frame_size, self.frame_size).float()
+        future_frames = batch['images'][:, 1:, :, :, :].reshape(-1, self.num_channels, self.frame_size, self.frame_size).float()
 
         past_embeddings, future_embeddings, mask, ids_restore = self.encoder(past_frames, future_frames)
         pred_patches = self.decoder(past_embeddings, future_embeddings, ids_restore)
