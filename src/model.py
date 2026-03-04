@@ -1,11 +1,9 @@
 import math
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
 from typing import Tuple
 
 from src.config import ActSiamMAEConfig
-from src.dataset import read_platonic_solids_dataset
 
 
 def generate_pos_embeddings(
@@ -44,11 +42,21 @@ class ActSiamMAEPatchifier(nn.Module):
         self.seq_length = config.seq_length
 
     def forward(self, frame: torch.Tensor) -> torch.Tensor:
-        frame = frame.view(-1, self.num_channels, self.grid_side_length, self.patch_size, self.grid_side_length, self.patch_size)
+        frame = frame.view(
+            -1,
+            self.num_channels,
+            self.grid_side_length,
+            self.patch_size,
+            self.grid_side_length,
+            self.patch_size,
+        )
         frame = frame.permute(0, 2, 4, 1, 3, 5)
-        frame = frame.reshape(-1, self.seq_length, self.num_channels * self.patch_size * self.patch_size)
+        frame = frame.reshape(
+            -1, self.seq_length, self.num_channels * self.patch_size * self.patch_size
+        )
 
         return frame
+
 
 # TODO: Verify if this correctly reconstructs from the decoder output
 class ActSiamMAEDepatchifier(nn.Module):
@@ -72,7 +80,9 @@ class ActSiamMAEDepatchifier(nn.Module):
             self.patch_size,
         )
         patched_frame = patched_frame.permute(0, 3, 1, 4, 2, 5)
-        frame = patched_frame.reshape(-1, self.num_channels, self.img_size, self.img_size)
+        frame = patched_frame.reshape(
+            -1, self.num_channels, self.img_size, self.img_size
+        )
 
         return frame
 
@@ -198,12 +208,12 @@ class ActSiamMAEEncoder(nn.Module):
         self.register_buffer("pos_embeddings", pos_embeddings)
         self.layer_norm = nn.LayerNorm(config.hidden_dim)
         self.patch_layer = ActSiamMAEPatchifier(config)
-        self.embed_layer = nn.Linear(in_features=config.num_channels * config.patch_size * config.patch_size, out_features=config.hidden_dim)
+        self.embed_layer = nn.Linear(
+            in_features=config.num_channels * config.patch_size * config.patch_size,
+            out_features=config.hidden_dim,
+        )
         self.attn_blocks = nn.ModuleList(
-            [
-                ActSiamMAEEncoderBlock(config)
-                for _ in range(config.encoder_num_layers)
-            ]
+            [ActSiamMAEEncoderBlock(config) for _ in range(config.encoder_num_layers)]
         )
 
     def forward(
@@ -241,7 +251,6 @@ class ActSiamMAEEncoder(nn.Module):
         mask = torch.ones(batch_size, self.seq_length, device=self.device)
         mask.scatter_(1, ids_keep, 0)
 
-
         for attn_block in self.attn_blocks:
             future_embeddings = attn_block(future_embeddings)
 
@@ -269,10 +278,7 @@ class ActSiamMAEDecoder(nn.Module):
             config.num_channels * config.patch_size * config.patch_size,
         )
         self.attn_blocks = nn.ModuleList(
-            [
-                ActSiamMAEDecoderBlock(config)
-                for _ in range(config.decoder_num_layers)
-            ]
+            [ActSiamMAEDecoderBlock(config) for _ in range(config.decoder_num_layers)]
         )
 
     def forward(
@@ -301,28 +307,3 @@ class ActSiamMAEDecoder(nn.Module):
         patches = self.output_layer(future_embeddings)
 
         return patches
-
-
-if __name__ == "__main__":
-    print("Test run")
-    dataset = read_platonic_solids_dataset("data/medium_data/")
-
-    train_loader = DataLoader(
-        dataset,
-        batch_size=2,
-        shuffle=True,
-    )
-
-    batch = next(iter(train_loader))
-    config = ActSiamMAEConfig()
-
-    encoder = ActSiamMAEEncoder(config)
-    decoder = ActSiamMAEDecoder(config)
-
-    past_frame = batch["images"][:, 0, :, :, :].permute(0, 3, 1, 2).float()
-    future_frame = batch["images"][:, 1, :, :, :].permute(0, 3, 1, 2).float()
-
-    past_embeddings, future_embeddings, mask, ids_restore = encoder(past_frame, future_frame)
-    patches = decoder(past_embeddings, future_embeddings, ids_restore)
-
-    print(patches.shape)

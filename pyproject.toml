@@ -29,7 +29,8 @@ dependencies = [
     "pillow",
     "timm",        
     "networkx",
-    "pyvista"
+    "pyvista",
+    "webdataset"
 ]
 
 [project.optional-dependencies]

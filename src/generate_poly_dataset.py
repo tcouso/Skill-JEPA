@@ -1,10 +1,12 @@
+import json
 import numpy as np
 import pyvista as pv
 import random as rd
 import argparse
 import os
-import math
 from typing import Tuple, List
+from PIL import Image
+from tqdm import tqdm
 
 MIN_R = 2.0
 MAX_R = 6.0
@@ -93,7 +95,7 @@ def apply_action_and_get_image(
     actor: pv.Actor,
     current_state: Tuple[float, float, float],
     action_vel: Tuple[float, float, float],
-) -> Tuple[np.ndarray, Tuple[float, float, float]]:
+) -> Tuple[pv.pyvista_ndarray, Tuple[float, float, float]]:
 
     d0, ry0, rx0 = current_state
     vd, vy, vx = action_vel
@@ -102,7 +104,6 @@ def apply_action_and_get_image(
     ry_final = ry0 + (vy * MAX_DEG_PER_STEP)
     rx_final = rx0 + (vx * MAX_DEG_PER_STEP)
 
-    # Clamping zoom based on arm length restriction
     r = ((MAX_R + MIN_R) / 2) + (d_final * (MAX_R - MIN_R) / 2)
 
     plotter.camera.position = (0, 0, r)
@@ -120,7 +121,6 @@ def apply_action_and_get_image(
 def generate_raw_dataset(
     output_dir: str,
     num_trajectories: int,
-    shard_size: int,
     trajectory_length: int,
     resolution: int,
     shape_arg: str,
@@ -134,109 +134,95 @@ def generate_raw_dataset(
     pl.set_background("white")
     pl.hide_axes()
 
-    total_shards = math.ceil(num_trajectories / shard_size)
-    print(
-        f"Generating {num_trajectories} trajectories ({shape_arg}) across {total_shards} shards."
-    )
+    print(f"Generating {num_trajectories} trajectories ({shape_arg}).")
 
-    traj_global_count = 0
+    if shape_arg == "mixed":
+        assigned_shapes = [
+            SHAPE_NAMES[i % len(SHAPE_NAMES)] for i in range(num_trajectories)
+        ]
+        rd.shuffle(assigned_shapes)
+    else:
+        assigned_shapes = [shape_arg] * num_trajectories
 
-    for shard_idx in range(total_shards):
-        current_shard_size = min(shard_size, num_trajectories - traj_global_count)
+    for i in tqdm(range(num_trajectories), desc="Generating trajectories"):
+        traj_imgs = []
+        traj_vels = []
+        traj_states = []
 
-        shard_images = []
-        shard_actions = []
-        shard_states = []
-        shard_shape_ids = []
+        current_shape_name = assigned_shapes[i]
+        current_shape_id = SHAPE_REGISTRY[current_shape_name]
 
-        if shape_arg == "mixed":
-            assigned_shapes = [
-                SHAPE_NAMES[i % len(SHAPE_NAMES)] for i in range(current_shard_size)
-            ]
-            rd.shuffle(assigned_shapes)
+        pl.clear_actors()
+        mesh = get_mesh(current_shape_name)
+
+        if monochromatic:
+            actor = pl.add_mesh(mesh, color="white", show_edges=True, line_width=2)
         else:
-            assigned_shapes = [shape_arg] * current_shard_size
+            if "face_ids" not in mesh.cell_data:
+                mesh.cell_data["face_ids"] = np.arange(mesh.n_cells)
 
-        for i in range(current_shard_size):
-            traj_imgs = []
-            traj_vels = []
-            traj_states = []
+            actor = pl.add_mesh(
+                mesh,
+                show_edges=True,
+                line_width=2,
+                cmap="tab20",
+                scalars="face_ids",
+                preference="cell",
+                show_scalar_bar=False,
+            )
 
-            current_shape_name = assigned_shapes[i]
-            current_shape_id = SHAPE_REGISTRY[current_shape_name]
+        start_d = rd.uniform(-1, 1)
+        start_ry = rd.uniform(0, 360)
+        start_rx = rd.uniform(0, 360)
+        state = (start_d, start_ry, start_rx)
 
-            pl.clear_actors()
-            mesh = get_mesh(current_shape_name)
+        img, state = apply_action_and_get_image(pl, actor, state, (0.0, 0.0, 0.0))
+        traj_imgs.append(img)
+        traj_states.append(state)
 
-            if monochromatic:
-                actor = pl.add_mesh(mesh, color="white", show_edges=True, line_width=2)
-            else:
-                if "face_ids" not in mesh.cell_data:
-                    mesh.cell_data["face_ids"] = np.arange(mesh.n_cells)
+        if repeated_vel:
+            velocities = repeated_vel_closed_loop_trajectory(trajectory_length, state)
+        else:
+            velocities = closed_loop_trajectory(trajectory_length, state)
 
-                actor = pl.add_mesh(
-                    mesh,
-                    show_edges=True,
-                    line_width=2,
-                    cmap="tab20",
-                    scalars="face_ids",
-                    preference="cell",
-                    show_scalar_bar=False,
-                )
-
-            start_d = rd.uniform(-1, 1)
-            start_ry = rd.uniform(0, 360)
-            start_rx = rd.uniform(0, 360)
-            state = (start_d, start_ry, start_rx)
-
-            img, state = apply_action_and_get_image(pl, actor, state, (0.0, 0.0, 0.0))
+        for vel in velocities:
+            img, state = apply_action_and_get_image(pl, actor, state, vel)
             traj_imgs.append(img)
             traj_states.append(state)
+            traj_vels.append(vel)
 
-            if repeated_vel:
-                velocities = repeated_vel_closed_loop_trajectory(
-                    trajectory_length, state
-                )
-            else:
-                velocities = closed_loop_trajectory(trajectory_length, state)
+        base_name = f"traj_{i:06d}"
 
-            for vel in velocities:
-                img, state = apply_action_and_get_image(pl, actor, state, vel)
-                traj_imgs.append(img)
-                traj_states.append(state)
-                traj_vels.append(vel)
+        for f_idx, frame_arr in enumerate(traj_imgs):
+            img_path = os.path.join(output_dir, f"{base_name}.frame_{f_idx:03d}.jpg")
+            Image.fromarray(frame_arr).save(img_path, quality=95)
 
-            shard_images.append(np.array(traj_imgs, dtype=np.uint8))
-            shard_actions.append(np.array(traj_vels, dtype=np.float32))
-            shard_states.append(np.array(traj_states, dtype=np.float32))
-            shard_shape_ids.append(current_shape_id)
-
-            traj_global_count += 1
-            print(f"  [Shard {shard_idx}] {i+1}/{current_shard_size}", end="\r")
-
-        save_name = f"shard{shard_idx:03d}.npz"
-        save_path = os.path.join(output_dir, save_name)
-
-        np.savez_compressed(
-            save_path,
-            images=np.array(shard_images),
-            actions=np.array(shard_actions),
-            states=np.array(shard_states),
-            shape_ids=np.array(shard_shape_ids),
+        np.save(
+            os.path.join(output_dir, f"{base_name}.actions.npy"),
+            np.array(traj_vels, dtype=np.float32),
         )
-        print(f"\n  Saved: {save_path}")
+        np.save(
+            os.path.join(output_dir, f"{base_name}.states.npy"),
+            np.array(traj_states, dtype=np.float32),
+        )
+
+        with open(os.path.join(output_dir, f"{base_name}.meta.json"), "w") as f:
+            json.dump(
+                {"shape_id": current_shape_id, "shape_name": current_shape_name}, f
+            )
 
     pl.close()
-    print(f"Done. {traj_global_count} trajectories generated.")
+    print(f"Done. {num_trajectories} trajectories generated as raw media.")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--num_trajs", type=int, default=100)
-    parser.add_argument("--shard_size", type=int, default=50)
+    parser.add_argument("--num_trajs", type=int, default=4_500)
     parser.add_argument("--length", type=int, default=20)
     parser.add_argument("--resolution", type=int, default=224)
-    parser.add_argument("--output_dir", type=str, default="./data/medium_data")
+    parser.add_argument(
+        "--output_dir", type=str, default="../mixed_shapes_color_100k/train"
+    )
     parser.add_argument("--monochromatic", action="store_true")
     parser.add_argument(
         "--shape", type=str, default="icosahedron", choices=SHAPE_NAMES + ["mixed"]
@@ -248,7 +234,6 @@ if __name__ == "__main__":
     generate_raw_dataset(
         args.output_dir,
         args.num_trajs,
-        args.shard_size,
         args.length,
         args.resolution,
         args.shape,
