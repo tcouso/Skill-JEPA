@@ -6,7 +6,7 @@ num_workers: 16
 
 # Training
 max_epochs: 400
-recon_log_every_n_steps: 50
+recon_log_every_n_steps: 500
 
 # Compute & Hardware Routing
 accelerator: "gpu"
