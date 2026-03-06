@@ -169,7 +169,7 @@ class ActSiamMAEEncoder(nn.Module):
         self.hidden_dim = config.hidden_dim
         self.num_channels = config.num_channels
         self.patch_size = config.patch_size
-        self.masking_ratio = config.masking_ratio
+        self.masking_ratio = config.start_masking_ratio
         self.cls_token = nn.Parameter(torch.zeros(1, 1, config.hidden_dim))
 
         self.masking_ratio = config.start_masking_ratio
