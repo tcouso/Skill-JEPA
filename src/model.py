@@ -172,6 +172,7 @@ class ActSiamMAEEncoder(nn.Module):
         self.masking_ratio = config.masking_ratio
         self.cls_token = nn.Parameter(torch.zeros(1, 1, config.hidden_dim))
 
+        self.masking_ratio = config.start_masking_ratio
         pos_embeddings = generate_pos_embeddings(
             hidden_dim=config.hidden_dim,
             grid_side_length=config.grid_side_length,

@@ -21,7 +21,6 @@ class ActSiamMAEConfig:
     num_attn_heads: int = 8
     seq_length: int = grid_side_length * grid_side_length
     head_dimension: int = hidden_dim // num_attn_heads
-    masking_ratio: float = 0.75
     encoder_num_layers: int = 4
     decoder_num_layers: int = 4
 
@@ -29,8 +28,11 @@ class ActSiamMAEConfig:
     base_learning_rate: float = 1.5e-4
     weight_decay: float = 0.05
     betas: tuple = (0.9, 0.95)
+    start_masking_ratio: float = 0.75
+    target_masking_ratio: float = 0.90
     max_epochs: int = 400
     warmup_epochs: int = 40
+    masking_schedule_epochs: int = 100
 
     accelerator: str = "gpu"
     devices: int = -1
