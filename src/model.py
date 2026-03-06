@@ -58,7 +58,6 @@ class ActSiamMAEPatchifier(nn.Module):
         return frame
 
 
-# TODO: Verify if this correctly reconstructs from the decoder output
 class ActSiamMAEDepatchifier(nn.Module):
     def __init__(self, config: ActSiamMAEConfig):
         super(ActSiamMAEDepatchifier, self).__init__()
@@ -152,11 +151,106 @@ class ActSiamMAEEncoderBlock(nn.Module):
     def forward(self, embeddings: torch.Tensor) -> torch.Tensor:
         norm_embeddings = self.layer_norm1(embeddings)
         attn_embeddings = embeddings + self.multi_head_attn(
-            norm_embeddings, norm_embeddings
+            query_embedding=norm_embeddings, 
+            key_value_embedding=norm_embeddings
         )
         mlp_embeddings = attn_embeddings + self.mlp(self.layer_norm2(attn_embeddings))
 
         return mlp_embeddings
+
+
+# TODO: We are lacking a [CLS] token. This is important for linear probing of the model
+class ActSiamMAEEncoder(nn.Module):
+    def __init__(self, config: ActSiamMAEConfig):
+        super(ActSiamMAEEncoder, self).__init__()
+        self.config = config
+        self.device = config.device
+        self.seq_length = config.seq_length
+        self.hidden_dim = config.hidden_dim
+        self.num_channels = config.num_channels
+        self.patch_size = config.patch_size
+        self.masking_ratio = config.masking_ratio
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, config.hidden_dim))
+
+        pos_embeddings = generate_pos_embeddings(
+            hidden_dim=config.hidden_dim,
+            grid_side_length=config.grid_side_length,
+            seq_length=config.seq_length,
+        )
+        cls_pos_embedding = torch.zeros(1, 1, config.hidden_dim)
+        full_pos_embedding = torch.cat((cls_pos_embedding, pos_embeddings), dim=1)
+        self.register_buffer("pos_embeddings", full_pos_embedding)
+
+        self.layer_norm = nn.LayerNorm(config.hidden_dim)
+        self.patch_layer = ActSiamMAEPatchifier(config)
+        self.embed_layer = nn.Linear(
+            in_features=config.num_channels * config.patch_size * config.patch_size,
+            out_features=config.hidden_dim,
+        )
+        self.attn_blocks = nn.ModuleList(
+            [ActSiamMAEEncoderBlock(config) for _ in range(config.encoder_num_layers)]
+        )
+
+    def forward(
+        self, past_frame: torch.Tensor, future_frame: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        
+        batch_size = past_frame.shape[0]
+
+        # Past frame is given complete
+        past_frame = self.patch_layer(past_frame)
+        past_embeddings = self.embed_layer(past_frame)
+        cls_tokens_past = self.cls_token.expand(batch_size, -1, -1)
+
+        # Prepend [CLS] token for ending probing
+        past_embeddings = torch.cat((cls_tokens_past, past_embeddings), dim=1)
+        past_embeddings += self.pos_embeddings
+
+        for attn_block in self.attn_blocks:
+            past_embeddings = attn_block(past_embeddings)
+
+        past_embeddings = self.layer_norm(past_embeddings)
+
+        # Future frame is masked
+        future_frame = self.patch_layer(future_frame)
+        future_embeddings = self.embed_layer(future_frame)
+
+        # Omit [CLS] positional embedding for future frame
+        future_embeddings += self.pos_embeddings[:, 1:, :]
+
+        num_keep = int(self.seq_length * (1 - self.masking_ratio))
+        rand_tensor = torch.rand(batch_size, self.seq_length, device=self.device)
+        _, ids_shuffle = rand_tensor.sort(dim=1)
+        ids_restore = torch.argsort(ids_shuffle, dim=1)
+        ids_shuffle_expanded = ids_shuffle.unsqueeze(-1).expand(-1, -1, self.hidden_dim)
+        future_embeddings = torch.gather(
+            future_embeddings, dim=1, index=ids_shuffle_expanded
+        )
+        future_embeddings = future_embeddings[:, :num_keep]
+
+        ids_keep = ids_shuffle[:, :num_keep]
+        mask = torch.ones(batch_size, self.seq_length, device=self.device)
+        mask.scatter_(1, ids_keep, 0)
+
+        # [CLS] token should never be masked, so we add it afterwards
+        cls_pos = self.pos_embeddings[:, :1, :]
+        cls_tokens_future = self.cls_token.expand(batch_size, -1, -1)
+        cls_tokens_future = cls_tokens_future + cls_pos
+        future_embeddings = torch.cat((cls_tokens_future, future_embeddings), dim=1)
+
+        for attn_block in self.attn_blocks:
+            future_embeddings = attn_block(future_embeddings)
+
+        future_embeddings = self.layer_norm(future_embeddings)
+
+        past_cls = past_embeddings[:, 0, :]
+        future_cls = future_embeddings[:, 0, :]
+
+        past_embeddings_without_cls = past_embeddings[:, 1:, :]
+        future_embeddings_without_cls = future_embeddings[:, 1:, :]
+
+
+        return past_embeddings_without_cls, future_embeddings_without_cls, past_cls, future_cls, mask, ids_restore
 
 
 class ActSiamMAEDecoderBlock(nn.Module):
@@ -179,84 +273,20 @@ class ActSiamMAEDecoderBlock(nn.Module):
         self, past_embeddings: torch.Tensor, future_embeddings: torch.Tensor
     ) -> torch.Tensor:
         norm_future_embeddings = self.layer_norm1(future_embeddings)
-        attn_embeddings = future_embeddings + self.multi_head_self_attn(
-            norm_future_embeddings, norm_future_embeddings
+        attn_embeddings = future_embeddings + self.multi_head_cross_attn(
+            query_embedding=norm_future_embeddings, 
+            key_value_embedding=past_embeddings
         )
-        attn_embeddings = attn_embeddings + self.multi_head_cross_attn(
-            self.layer_norm2(attn_embeddings), past_embeddings
+        
+        norm_attn_embeddings = self.layer_norm2(attn_embeddings)
+        attn_embeddings = attn_embeddings + self.multi_head_self_attn(
+            query_embedding=norm_attn_embeddings, 
+            key_value_embedding=norm_attn_embeddings
         )
+        
         mlp_embeddings = attn_embeddings + self.mlp(self.layer_norm3(attn_embeddings))
 
         return mlp_embeddings
-
-
-class ActSiamMAEEncoder(nn.Module):
-    def __init__(self, config: ActSiamMAEConfig):
-        super(ActSiamMAEEncoder, self).__init__()
-        self.config = config
-        self.device = config.device
-        self.seq_length = config.seq_length
-        self.hidden_dim = config.hidden_dim
-        self.num_channels = config.num_channels
-        self.patch_size = config.patch_size
-        self.masking_ratio = config.masking_ratio
-        pos_embeddings = generate_pos_embeddings(
-            hidden_dim=config.hidden_dim,
-            grid_side_length=config.grid_side_length,
-            seq_length=config.seq_length,
-        )
-        self.register_buffer("pos_embeddings", pos_embeddings)
-        self.layer_norm = nn.LayerNorm(config.hidden_dim)
-        self.patch_layer = ActSiamMAEPatchifier(config)
-        self.embed_layer = nn.Linear(
-            in_features=config.num_channels * config.patch_size * config.patch_size,
-            out_features=config.hidden_dim,
-        )
-        self.attn_blocks = nn.ModuleList(
-            [ActSiamMAEEncoderBlock(config) for _ in range(config.encoder_num_layers)]
-        )
-
-    def forward(
-        self, past_frame: torch.Tensor, future_frame: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-
-        # Past frame is given complete
-        past_frame = self.patch_layer(past_frame)
-        past_embeddings = self.embed_layer(past_frame)
-        past_embeddings += self.pos_embeddings
-
-        for attn_block in self.attn_blocks:
-            past_embeddings = attn_block(past_embeddings)
-
-        past_embeddings = self.layer_norm(past_embeddings)
-
-        # Future frame is masked
-        future_frame = self.patch_layer(future_frame)
-        future_embeddings = self.embed_layer(future_frame)
-        future_embeddings += self.pos_embeddings
-
-        batch_size = past_frame.shape[0]
-        num_keep = int(self.seq_length * (1 - self.masking_ratio))
-
-        rand_tensor = torch.rand(batch_size, self.seq_length, device=self.device)
-        _, ids_shuffle = rand_tensor.sort(dim=1)
-        ids_restore = torch.argsort(ids_shuffle, dim=1)
-        ids_shuffle_expanded = ids_shuffle.unsqueeze(-1).expand(-1, -1, self.hidden_dim)
-        future_embeddings = torch.gather(
-            future_embeddings, dim=1, index=ids_shuffle_expanded
-        )
-        future_embeddings = future_embeddings[:, :num_keep]
-
-        ids_keep = ids_shuffle[:, :num_keep]
-        mask = torch.ones(batch_size, self.seq_length, device=self.device)
-        mask.scatter_(1, ids_keep, 0)
-
-        for attn_block in self.attn_blocks:
-            future_embeddings = attn_block(future_embeddings)
-
-        future_embeddings = self.layer_norm(future_embeddings)
-
-        return past_embeddings, future_embeddings, mask, ids_restore
 
 
 class ActSiamMAEDecoder(nn.Module):

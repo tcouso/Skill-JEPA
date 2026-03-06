@@ -48,13 +48,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--raw_dir",
         type=str,
-        default="data/mixed_shapes_color_reduced_ratio/train/",
+        default="data/mixed_shapes_color_reduced_ratio/val/",
         help="Path to raw output directory",
     )
     parser.add_argument(
         "--output_prefix",
         type=str,
-        default="data/wds_mixed_shapes_color_reduced_ratio/train/platonic",
+        default="data/wds_mixed_shapes_color_reduced_ratio/val/platonic",
         help="Prefix for shards",
     )
     parser.add_argument(
