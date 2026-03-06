@@ -22,7 +22,7 @@ class ActSiamMAESystem(pl.LightningModule):
         self.num_channels = config.num_channels
         self.frame_size = config.frame_size
         self.batch_size = config.batch_size
-        self.base_learning_rate = config.learning_rate
+        self.base_learning_rate = config.base_learning_rate
         self.weight_decay = config.weight_decay
         self.betas = config.betas
         self.max_epochs = config.max_epochs
@@ -108,8 +108,6 @@ class ActSiamMAESystem(pl.LightningModule):
         return past_frames, future_frames, masked_frames, reconstructed_frames
 
 
-    # TODO: Understand these changes, and how do they relate with
-    # representation collapse observed during the last training session
     def configure_optimizers(self) -> OptimizerLRScheduler:
         decay_params = []
         no_decay_params = []

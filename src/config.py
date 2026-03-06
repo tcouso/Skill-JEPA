@@ -14,8 +14,8 @@ class ActSiamMAEConfig:
 
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     num_channels: int = 3
-    patch_size: int = 16
-    grid_side_length: int = 14
+    patch_size: int = 8
+    grid_side_length: int = 28
     hidden_dim: int = 512
     frame_size: int = 224
     num_attn_heads: int = 8
@@ -26,10 +26,10 @@ class ActSiamMAEConfig:
     decoder_num_layers: int = 4
 
     batch_size: int = 40
-    learning_rate: float = 1.5e-4
+    base_learning_rate: float = 1.5e-4
     weight_decay: float = 0.05
     betas: tuple = (0.9, 0.95)
-    max_epochs: int = 2000
+    max_epochs: int = 400
     warmup_epochs: int = 40
 
     accelerator: str = "gpu"
