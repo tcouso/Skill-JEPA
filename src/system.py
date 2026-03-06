@@ -66,9 +66,9 @@ class ActSiamMAESystem(pl.LightningModule):
             .float()
         )
 
-        past_embeddings, future_embeddings, mask, ids_restore = self.encoder(
-            past_frames, future_frames
-        )
+        past_embeddings, future_embeddings, past_cls, future_cls, mask, ids_restore = self.encoder(
+                    past_frames, future_frames
+                )
         future_patches = self.encoder.patch_layer(future_frames)
         pred_patches = self.decoder(past_embeddings, future_embeddings, ids_restore)
 
@@ -114,7 +114,7 @@ class ActSiamMAESystem(pl.LightningModule):
             .float()
         )
 
-        past_embeddings, future_embeddings, mask, ids_restore = self.encoder(
+        past_embeddings, future_embeddings, past_cls, future_cls, mask, ids_restore = self.encoder(
             past_frames, future_frames
         )
         pred_patches = self.decoder(past_embeddings, future_embeddings, ids_restore)
