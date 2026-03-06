@@ -27,10 +27,32 @@ class ActSiamMAESystem(pl.LightningModule):
         self.betas = config.betas
         self.max_epochs = config.max_epochs
         self.warmup_epochs = config.warmup_epochs
+        self.start_masking_ratio = config.start_masking_ratio
+        self.target_masking_ratio = config.target_masking_ratio
+        self.masking_schedule_epochs = config.masking_schedule_epochs
 
         self.encoder = ActSiamMAEEncoder(config)
         self.decoder = ActSiamMAEDecoder(config)
         self.depatchifier = ActSiamMAEDepatchifier(config)
+
+    def _get_current_masking_ratio(self) -> float:
+        if self.current_epoch < self.masking_schedule_epochs:
+            alpha = self.current_epoch / self.masking_schedule_epochs
+            curr_masking_ratio = self.start_masking_ratio + alpha * (self.target_masking_ratio - self.start_masking_ratio)
+        else:
+            curr_masking_ratio = self.target_masking_ratio
+
+        return curr_masking_ratio
+
+    def on_train_epoch_start(self):
+        curr_ratio = self._get_current_masking_ratio()
+        self.encoder.masking_ratio = curr_ratio
+        self.log("masking_ratio/train", curr_ratio, sync_dist=True)
+
+    def on_validation_epoch_start(self):
+        curr_ratio = self._get_current_masking_ratio()
+        self.encoder.masking_ratio = curr_ratio
+        self.log("masking_ratio/val", curr_ratio, sync_dist=True)
 
     def _shared_step(self, batch) -> torch.Tensor:
         past_frames = (
@@ -106,7 +128,6 @@ class ActSiamMAESystem(pl.LightningModule):
         masked_frames = self.depatchifier(masked_patches)
 
         return past_frames, future_frames, masked_frames, reconstructed_frames
-
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         decay_params = []
