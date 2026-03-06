@@ -9,7 +9,7 @@ from PIL import Image
 from tqdm import tqdm
 
 MIN_R = 2.0
-MAX_R = 6.0
+MAX_R = 4.0
 MAX_DEG_PER_STEP = 90.0
 
 SHAPE_REGISTRY = {
@@ -217,15 +217,15 @@ def generate_raw_dataset(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--num_trajs", type=int, default=4_500)
-    parser.add_argument("--length", type=int, default=20)
+    parser.add_argument("--num_trajs", type=int, default=625)
+    parser.add_argument("--length", type=int, default=16)
     parser.add_argument("--resolution", type=int, default=224)
     parser.add_argument(
-        "--output_dir", type=str, default="../mixed_shapes_color_100k/train"
+        "--output_dir", type=str, default="data/mixed_shapes_color_reduced_ratio/val"
     )
     parser.add_argument("--monochromatic", action="store_true")
     parser.add_argument(
-        "--shape", type=str, default="icosahedron", choices=SHAPE_NAMES + ["mixed"]
+        "--shape", type=str, default="mixed", choices=SHAPE_NAMES + ["mixed"]
     )
     parser.add_argument("--repeated_vel", type=bool, default=False)
 

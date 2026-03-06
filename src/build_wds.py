@@ -2,6 +2,7 @@ import os
 import glob
 import argparse
 import webdataset as wds
+from tqdm import tqdm
 
 
 def compile_dataset(raw_dir: str, output_prefix: str, max_count: int):
@@ -23,7 +24,7 @@ def compile_dataset(raw_dir: str, output_prefix: str, max_count: int):
     print(f"[Compiler] Packing into {shard_pattern} ({max_count} per shard)...")
 
     with wds.ShardWriter(shard_pattern, maxcount=max_count) as sink:
-        for i, basename in enumerate(basenames):
+        for basename in tqdm(basenames, desc="Packing shards"):
             sample = {"__key__": basename}
 
             traj_files = sorted(glob.glob(os.path.join(raw_dir, f"{basename}.*")))
@@ -36,9 +37,6 @@ def compile_dataset(raw_dir: str, output_prefix: str, max_count: int):
                     sample[ext] = stream.read()
 
             sink.write(sample)
-            print(
-                f"  [I/O] Packed {basename} | Progress: {i+1}/{total_trajs}", end="\r"
-            )
 
     print(
         f"\n[Compiler] Done. Shards successfully written to {os.path.dirname(output_prefix)}"
@@ -50,19 +48,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--raw_dir",
         type=str,
-        required=True,
-        help="Path to raw output directory (e.g., ./data/toy_raw)",
+        default="data/mixed_shapes_color_reduced_ratio/train/",
+        help="Path to raw output directory",
     )
     parser.add_argument(
         "--output_prefix",
         type=str,
-        required=True,
-        help="Prefix for shards (e.g., ./data/wds/platonic)",
+        default="data/wds_mixed_shapes_color_reduced_ratio/train/platonic",
+        help="Prefix for shards",
     )
     parser.add_argument(
         "--max_count",
         type=int,
-        default=20,
+        default=125,
         help="Number of trajectories per .tar shard",
     )
 
