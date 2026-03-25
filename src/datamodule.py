@@ -4,7 +4,7 @@ import webdataset as wds
 from torch.utils.data import DataLoader
 from typing import TypedDict
 
-from src.config import ActSiamMAEConfig
+from src.config import ModelConfig
 
 
 class PlatonicSample(TypedDict):
@@ -27,7 +27,7 @@ def _process_wds_dict(sample) -> PlatonicSample:
 
 
 class PlatonicDataModule(pl.LightningDataModule):
-    def __init__(self, config: ActSiamMAEConfig):
+    def __init__(self, config: ModelConfig):
         super().__init__()
         self.train_urls = config.train_urls
         self.val_urls = config.val_urls

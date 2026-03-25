@@ -3,14 +3,14 @@ import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 
-from src.config import ActSiamMAEConfig
+from src.config import ModelConfig
 from src.datamodule import PlatonicDataModule
-from src.system import ActSiamMAESystem
+from src.system import ModelSystem
 from src.callbacks import WandbReconstructionCallback
 
 
 def main(args):
-    config = ActSiamMAEConfig.from_yaml(args.config)
+    config = ModelConfig.from_yaml(args.config)
     pl.seed_everything(config.seed, workers=True)
 
     run_name = f"ActSiamMAE_mask{config.start_masking_ratio}_to_{config.target_masking_ratio}_bs{config.batch_size}_lr{config.base_learning_rate}"
@@ -45,7 +45,7 @@ def main(args):
         log_every_n_steps=config.log_every_n_steps,
         logger=wandb_logger,
     )
-    system = ActSiamMAESystem(config)
+    system = ModelSystem(config)
     trainer.fit(system, datamodule=data_module, ckpt_path=args.ckpt_path)
 
 

@@ -3,11 +3,11 @@ import wandb
 import torchvision
 from pytorch_lightning.callbacks import Callback
 
-from src.config import ActSiamMAEConfig
+from src.config import ModelConfig
 
 
 class WandbReconstructionCallback(Callback):
-    def __init__(self, config: ActSiamMAEConfig):
+    def __init__(self, config: ModelConfig):
         super().__init__()
         self.config = config
         self.recon_log_every_n_steps = config.recon_log_every_n_steps

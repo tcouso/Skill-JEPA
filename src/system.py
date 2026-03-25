@@ -5,15 +5,16 @@ from typing import Tuple
 from pytorch_lightning.utilities.types import OptimizerLRScheduler
 
 from src.model import (
-    ActSiamMAEConfig,
-    ActSiamMAEEncoder,
-    ActSiamMAEDecoder,
-    ActSiamMAEDepatchifier,
+    ModelConfig,
+    TransformerEncoder,
+    Decoder,
+    Depatchifier,
+    Patchifier,
 )
 
 
-class ActSiamMAESystem(pl.LightningModule):
-    def __init__(self, config: ActSiamMAEConfig):
+class ModelSystem(pl.LightningModule):
+    def __init__(self, config: ModelConfig):
         super().__init__()
         self.save_hyperparameters("config")
         
@@ -31,9 +32,9 @@ class ActSiamMAESystem(pl.LightningModule):
         self.target_masking_ratio = config.target_masking_ratio
         self.masking_schedule_epochs = config.masking_schedule_epochs
 
-        self.encoder = ActSiamMAEEncoder(config)
-        self.decoder = ActSiamMAEDecoder(config)
-        self.depatchifier = ActSiamMAEDepatchifier(config)
+        self.encoder = TransformerEncoder(config)
+        self.decoder = Decoder(config)
+        self.depatchifier = Depatchifier(config)
 
     def _get_current_masking_ratio(self) -> float:
         if self.current_epoch < self.masking_schedule_epochs:
@@ -54,7 +55,11 @@ class ActSiamMAESystem(pl.LightningModule):
         self.encoder.masking_ratio = curr_ratio
         self.log("masking_ratio/val", curr_ratio, sync_dist=True)
 
+    # TODO: Should masking logic be externalized here?
     def _shared_step(self, batch) -> torch.Tensor:
+        actions = batch["actions"]
+        states = batch["states"]
+
         past_frames = (
             batch["images"][:, :-1, :, :, :]
             .reshape(-1, self.num_channels, self.frame_size, self.frame_size)
