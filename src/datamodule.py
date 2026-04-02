@@ -1,77 +1,80 @@
 import torch
 import pytorch_lightning as pl
-import webdataset as wds
 from torch.utils.data import DataLoader
-from typing import TypedDict
+from typing import Optional
 
+import stable_worldmodel as swm
+import stable_pretraining as spt
+from utils import get_column_normalizer, get_img_preprocessor
 from src.config import ModelConfig
 
 
-class PlatonicSample(TypedDict):
-    images: torch.Tensor
-    actions: torch.Tensor
-    states: torch.Tensor
-
-
-def _process_wds_dict(sample) -> PlatonicSample:
-    frame_keys = sorted(
-        [k for k in sample.keys() if "frame_" in k and k.endswith(".jpg")]
-    )
-    images = torch.stack([sample[k] for k in frame_keys])
-
-    return {
-        "images": images,
-        "actions": torch.from_numpy(sample["actions.npy"]),
-        "states": torch.from_numpy(sample["states.npy"]),
-    }
-
-
-class PlatonicDataModule(pl.LightningDataModule):
+class LeWMDataModule(pl.LightningDataModule):
     def __init__(self, config: ModelConfig):
         super().__init__()
-        self.train_urls = config.train_urls
-        self.val_urls = config.val_urls
+        self.config = config
+        self.dataset_name = config.dataset_name
+        self.frameskip = config.frameskip
+        self.history_size = config.history_size
+        self.num_preds = config.action_sequence_length
         self.batch_size = config.batch_size
         self.num_workers = config.num_workers
-        self.wds_shard_shuffle_size = config.wds_shard_shuffle_size
-        self.wds_sample_shuffle_size = config.wds_sample_shuffle_size
+        self.train_split = config.train_split
+        self.seed = config.seed
+        self.img_size = config.frame_size
 
-    def _build_pipeline(self, urls: str, is_train: bool) -> wds.DataPipeline:
-        pipeline = [
-            wds.SimpleShardList(urls),
-        ]
+        self.train_dataset: Optional[torch.utils.data.Dataset] = None
+        self.val_dataset: Optional[torch.utils.data.Dataset] = None
 
-        if is_train:
-            pipeline.append(wds.shuffle(self.wds_shard_shuffle_size))
+    def setup(self, stage: Optional[str] = None) -> None:
+        if self.train_dataset is not None and self.val_dataset is not None:
+            return
 
-        pipeline.extend(
-            [
-                wds.split_by_node,
-                wds.split_by_worker,
-                wds.tarfile_to_samples(),
-                wds.decode("torchrgb"),
-                wds.map(_process_wds_dict),
-            ]
+        total_steps = self.history_size + self.num_preds
+
+        base_dataset = swm.data.HDF5Dataset(
+            name=self.dataset_name,
+            num_steps=total_steps,
+            frameskip=self.frameskip,
+            keys_to_load=["pixels", "action", "proprio"],
+            keys_to_cache=["action", "proprio"],
+            transform=None
         )
 
-        if is_train:
-            pipeline.append(wds.shuffle(self.wds_sample_shuffle_size))
+        transforms = [get_img_preprocessor(source="pixels", target="pixels", img_size=self.img_size)]
 
-        pipeline.append(wds.batched(self.batch_size, partial=False))
+        for col in ["action", "proprio"]:
+            normalizer = get_column_normalizer(base_dataset, col, col)
+            transforms.append(normalizer)
+            setattr(self.config, f"{col}_dim", base_dataset.get_dim(col))
 
-        return wds.DataPipeline(*pipeline)
+        base_dataset.transform = spt.data.transforms.Compose(*transforms)
 
-    def setup(self, stage: str = None) -> None:
-        pass
+        rnd_gen = torch.Generator().manual_seed(self.seed)
+        self.train_dataset, self.val_dataset = spt.data.random_split(
+            base_dataset, 
+            lengths=[self.train_split, 1.0 - self.train_split], 
+            generator=rnd_gen
+        )
 
     def train_dataloader(self) -> DataLoader:
-        dataset = self._build_pipeline(self.train_urls, is_train=True)
-        return wds.WebLoader(
-            dataset, batch_size=None, num_workers=self.num_workers, pin_memory=True
+        rnd_gen = torch.Generator().manual_seed(self.seed)
+        return DataLoader(
+            self.train_dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+            drop_last=True,
+            pin_memory=True,
+            generator=rnd_gen
         )
 
     def val_dataloader(self) -> DataLoader:
-        dataset = self._build_pipeline(self.val_urls, is_train=False)
-        return wds.WebLoader(
-            dataset, batch_size=None, num_workers=self.num_workers, pin_memory=True
+        return DataLoader(
+            self.val_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            drop_last=False,
+            pin_memory=True
         )

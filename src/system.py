@@ -1,138 +1,137 @@
 import torch
 import pytorch_lightning as pl
 import torch.nn.functional as F
-from typing import Tuple
 from pytorch_lightning.utilities.types import OptimizerLRScheduler
 
-from src.model import (
-    ModelConfig,
-    TransformerEncoder,
-    Decoder,
-    Depatchifier,
-    Patchifier,
+from src.config import ModelConfig
+from src.module import (
+    VisionEncoder,
+    ActionAutoencoder,
+    ARPredictor,
+    SIGReg
 )
-
+from src.jepa import StandardJEPA, SkillJEPA
 
 class ModelSystem(pl.LightningModule):
     def __init__(self, config: ModelConfig):
         super().__init__()
         self.save_hyperparameters("config")
-        
         self.config = config
+
+        self.vision_encoder = VisionEncoder(
+            model_name=config.vision_model_name, 
+            target_hidden_dim=config.obs_encoder_hidden_dim
+        )
         
-        self.num_channels = config.num_channels
-        self.frame_size = config.frame_size
-        self.batch_size = config.batch_size
-        self.base_learning_rate = config.base_learning_rate
-        self.weight_decay = config.weight_decay
-        self.betas = config.betas
-        self.max_epochs = config.max_epochs
-        self.warmup_epochs = config.warmup_epochs
-        self.start_masking_ratio = config.start_masking_ratio
-        self.target_masking_ratio = config.target_masking_ratio
-        self.masking_schedule_epochs = config.masking_schedule_epochs
+        self.sigreg = SIGReg()
+        self.sigreg_weight = 1.0 # Lambda for SIGReg
+        self.beta_weight = 0.01  # Beta for VAE KL Divergence
 
-        self.encoder = TransformerEncoder(config)
-        self.decoder = Decoder(config)
-        self.depatchifier = Depatchifier(config)
-
-    def _get_current_masking_ratio(self) -> float:
-        if self.current_epoch < self.masking_schedule_epochs:
-            alpha = self.current_epoch / self.masking_schedule_epochs
-            curr_masking_ratio = self.start_masking_ratio + alpha * (self.target_masking_ratio - self.start_masking_ratio)
+        if config.predictor_mode == "jumpy":
+            self.action_encoder = ActionAutoencoder(config)
+            
+            # Predictor must map from VAE latent dim (64) to Vision dim (768)
+            # The context `c` here is the compressed skill `w`
+            self.predictor = ARPredictor(
+                num_frames=config.action_sequence_length,
+                depth=config.decoder_num_layers,
+                heads=config.obs_encoder_num_attn_heads,
+                mlp_dim=config.obs_encoder_hidden_dim * 4,
+                input_dim=config.obs_encoder_hidden_dim,
+                hidden_dim=config.obs_encoder_hidden_dim,
+            )
+            self.jepa = SkillJEPA(
+                config=config,
+                encoder=self.vision_encoder,
+                predictor=self.predictor,
+                action_encoder=self.action_encoder
+            )
         else:
-            curr_masking_ratio = self.target_masking_ratio
+            self.predictor = ARPredictor(
+                num_frames=config.action_sequence_length,
+                depth=config.decoder_num_layers,
+                heads=config.obs_encoder_num_attn_heads,
+                mlp_dim=config.obs_encoder_hidden_dim * 4,
+                input_dim=config.obs_encoder_hidden_dim,
+                hidden_dim=config.obs_encoder_hidden_dim,
+            )
+            self.jepa = StandardJEPA(
+                encoder=self.vision_encoder,
+                predictor=self.predictor
+            )
 
-        return curr_masking_ratio
+    def _shared_step(self, batch) -> dict:
+        """
+        Expected batch:
+        - 'pixels': (B, T, C, H, W)
+        - 'action': (B, T, action_dim) 
+        """
+        # LeWM replaces NaNs at sequence boundaries
+        batch["action"] = torch.nan_to_num(batch["action"], 0.0)
 
-    def on_train_epoch_start(self):
-        curr_ratio = self._get_current_masking_ratio()
-        self.encoder.masking_ratio = curr_ratio
-        self.log("masking_ratio/train", curr_ratio, sync_dist=True)
+        # 1. Forward Pass (Encode and Predict)
+        output = self.jepa.encode(batch)
+        
+        emb = output["emb"]  # (B, T, D)
+        act_emb = output["act_emb"]
 
-    def on_validation_epoch_start(self):
-        curr_ratio = self._get_current_masking_ratio()
-        self.encoder.masking_ratio = curr_ratio
-        self.log("masking_ratio/val", curr_ratio, sync_dist=True)
+        # 2. Predictive Loss Setup
+        ctx_len = 1 # Assuming a history size of 1 for now, adjust as needed
+        ctx_emb = emb[:, :ctx_len]
+        ctx_act = act_emb[:, :ctx_len]
+        
+        tgt_emb = emb[:, ctx_len:]
+        pred_emb = self.jepa.predict(ctx_emb, ctx_act)
 
-    # TODO: Should masking logic be externalized here?
-    def _shared_step(self, batch) -> torch.Tensor:
-        actions = batch["actions"]
-        states = batch["states"]
+        # 3. Loss Calculations
+        pred_loss = F.mse_loss(pred_emb, tgt_emb)
+        sigreg_loss = self.sigreg(emb.transpose(0, 1))
+        
+        total_loss = pred_loss + self.sigreg_weight * sigreg_loss
+        losses = {"pred_loss": pred_loss, "sigreg_loss": sigreg_loss}
 
-        past_frames = (
-            batch["images"][:, :-1, :, :, :]
-            .reshape(-1, self.num_channels, self.frame_size, self.frame_size)
-            .float()
-        )
-        future_frames = (
-            batch["images"][:, 1:, :, :, :]
-            .reshape(-1, self.num_channels, self.frame_size, self.frame_size)
-            .float()
-        )
+        # 4. VAE Losses (if jumpy)
+        if self.config.predictor_mode == "jumpy":
+            recon_actions = output["recon_actions"]
+            mu = output["mu"]
+            logvar = output["logvar"]
+            
+            # Reconstruction Loss
+            recon_loss = F.mse_loss(recon_actions, batch["action"])
+            
+            # KL Divergence: -0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
+            kld_loss = torch.mean(-0.5 * torch.sum(1 + logvar - mu ** 2 - logvar.exp(), dim = 1), dim = 0)
 
-        past_embeddings, future_embeddings, past_cls, future_cls, mask, ids_restore = self.encoder(
-                    past_frames, future_frames
-                )
-        future_patches = self.encoder.patch_layer(future_frames)
-        pred_patches = self.decoder(past_embeddings, future_embeddings, ids_restore)
+            vae_loss = recon_loss + self.beta_weight * kld_loss
+            total_loss += vae_loss
+            
+            losses.update({"recon_loss": recon_loss, "kld_loss": kld_loss})
 
-        loss = F.mse_loss(pred_patches[mask.bool()], future_patches[mask.bool()])
-        return loss
+        losses["loss"] = total_loss
+        return losses
 
     def training_step(self, batch) -> torch.Tensor:
-        loss = self._shared_step(batch)
-        self.log(
-            "train_loss",
-            loss,
+        losses = self._shared_step(batch)
+        self.log_dict(
+            {f"train/{k}": v for k, v in losses.items()},
             on_step=True,
-            batch_size=self.config.batch_size,
             on_epoch=True,
             prog_bar=True,
+            batch_size=self.config.batch_size
         )
-
-        return loss
+        return losses["loss"]
 
     def validation_step(self, batch) -> torch.Tensor:
-        loss = self._shared_step(batch)
-        self.log(
-            "val_loss",
-            loss,
-            batch_size=self.config.batch_size,
+        losses = self._shared_step(batch)
+        self.log_dict(
+            {f"val/{k}": v for k, v in losses.items()},
+            on_step=False,
             on_epoch=True,
             prog_bar=True,
             sync_dist=True,
+            batch_size=self.config.batch_size
         )
-
-        return loss
-
-    def reconstruct(self, batch) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-
-        past_frames = (
-            batch["images"][:, :-1, :, :, :]
-            .reshape(-1, self.num_channels, self.frame_size, self.frame_size)
-            .float()
-        )
-        future_frames = (
-            batch["images"][:, 1:, :, :, :]
-            .reshape(-1, self.num_channels, self.frame_size, self.frame_size)
-            .float()
-        )
-
-        past_embeddings, future_embeddings, past_cls, future_cls, mask, ids_restore = self.encoder(
-            past_frames, future_frames
-        )
-        pred_patches = self.decoder(past_embeddings, future_embeddings, ids_restore)
-
-        future_patches = self.encoder.patch_layer(future_frames)
-
-        masked_patches = future_patches.clone()
-        masked_patches[mask.bool()] = 0.0
-
-        reconstructed_frames = self.depatchifier(pred_patches)
-        masked_frames = self.depatchifier(masked_patches)
-
-        return past_frames, future_frames, masked_frames, reconstructed_frames
+        return losses["loss"]
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         decay_params = []
@@ -147,32 +146,27 @@ class ModelSystem(pl.LightningModule):
                 decay_params.append(param)
 
         optim_groups = [
-            {"params": decay_params, "weight_decay": self.weight_decay},
+            {"params": decay_params, "weight_decay": self.config.weight_decay},
             {"params": no_decay_params, "weight_decay": 0.0},
         ]
 
-        absolute_lr = self.base_learning_rate * (self.batch_size / 256.0)
-
         optimizer = torch.optim.AdamW(
             optim_groups,
-            lr=absolute_lr,
-            betas=self.betas,
+            lr=self.config.base_learning_rate,
+            betas=self.config.betas,
         )
 
-        decay_epochs = self.max_epochs - self.warmup_epochs
-
+        decay_epochs = self.config.max_epochs - self.config.warmup_epochs
         warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
-            optimizer, start_factor=1e-6, total_iters=self.warmup_epochs
+            optimizer, start_factor=1e-6, total_iters=self.config.warmup_epochs
         )
-        
         cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=decay_epochs, eta_min=0.0
         )
-        
         scheduler = torch.optim.lr_scheduler.SequentialLR(
             optimizer,
             schedulers=[warmup_scheduler, cosine_scheduler],
-            milestones=[self.warmup_epochs],
+            milestones=[self.config.warmup_epochs],
         )
 
         return {
