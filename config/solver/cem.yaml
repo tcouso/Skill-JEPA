@@ -1,0 +1,5 @@
+_target_: "stable_worldmodel.solvers.CEM"
+horizon: 5
+num_samples: 128
+iterations: 5
+action_dim: null

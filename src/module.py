@@ -260,38 +260,38 @@ class VisionEncoder(nn.Module):
 class ActionAutoencoder(nn.Module):
     def __init__(self, config: ModelConfig):
         super().__init__()
-        self.action_sequence_length = config.action_sequence_length
-        self.action_space_dim = config.action_space_dim
+        self.action_sequence_length = config.action.sequence_length
+        self.action_space_dim = config.action.space_dim
         
         self.action_projection = nn.Sequential(
-            nn.Linear(config.action_space_dim, config.action_encoder_hidden_dim),
-            nn.LayerNorm(config.action_encoder_hidden_dim),
+            nn.Linear(config.action.space_dim, config.action.hidden_dim),
+            nn.LayerNorm(config.action.hidden_dim),
             nn.GELU(),
         )
         
         self.state_projection = nn.Sequential(
-            nn.Linear(config.obs_encoder_hidden_dim, config.action_encoder_hidden_dim),
-            nn.LayerNorm(config.action_encoder_hidden_dim),
+            nn.Linear(config.vision.hidden_dim, config.action.hidden_dim),
+            nn.LayerNorm(config.action.hidden_dim),
             nn.GELU()        
         )
         
         encoder_layer = nn.TransformerEncoderLayer(
-            d_model=config.action_encoder_hidden_dim,
-            nhead=config.action_encoder_num_attn_heads,
-            dim_feedforward=config.action_encoder_hidden_dim * config.action_encoder_mlp_ratio,
+            d_model=config.action.hidden_dim,
+            nhead=config.action.num_attn_heads,
+            dim_feedforward=config.action.hidden_dim * config.action.mlp_ratio,
             activation="gelu",
             batch_first=True,
             norm_first=True
         )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=config.action_encoder_num_layers)
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=config.action.num_layers)
         
-        self.fc_mu = nn.Linear(config.action_encoder_hidden_dim, config.action_encoder_hidden_dim)
-        self.fc_logvar = nn.Linear(config.action_encoder_hidden_dim, config.action_encoder_hidden_dim)
+        self.fc_mu = nn.Linear(config.action.hidden_dim, config.action.hidden_dim)
+        self.fc_logvar = nn.Linear(config.action.hidden_dim, config.action.hidden_dim)
         
         self.decoder = nn.Sequential(
-            nn.Linear(config.action_encoder_hidden_dim + config.obs_encoder_hidden_dim, config.obs_encoder_hidden_dim),
+            nn.Linear(config.action.hidden_dim + config.vision.hidden_dim, config.vision.hidden_dim),
             nn.GELU(),
-            nn.Linear(config.obs_encoder_hidden_dim, config.action_sequence_length * config.action_space_dim),
+            nn.Linear(config.vision.hidden_dim, config.action.sequence_length * config.action.space_dim),
         )
 
     def forward(self, actions: torch.Tensor, state_embedding: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:        

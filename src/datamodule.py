@@ -13,15 +13,15 @@ class LeWMDataModule(pl.LightningDataModule):
     def __init__(self, config: ModelConfig):
         super().__init__()
         self.config = config
-        self.dataset_name = config.dataset_name
-        self.frameskip = config.frameskip
-        self.history_size = config.history_size
-        self.num_preds = config.action_sequence_length
-        self.batch_size = config.batch_size
-        self.num_workers = config.num_workers
-        self.train_split = config.train_split
+        self.dataset_name = config.dataset.name
+        self.frameskip = config.dataset.frameskip
+        self.history_size = config.dataset.history_size
+        self.num_preds = config.action.sequence_length
+        self.batch_size = config.training.batch_size
+        self.num_workers = config.dataset.num_workers
+        self.train_split = config.dataset.train_split
         self.seed = config.seed
-        self.img_size = config.frame_size
+        self.img_size = config.vision.frame_size
 
         self.train_dataset: Optional[torch.utils.data.Dataset] = None
         self.val_dataset: Optional[torch.utils.data.Dataset] = None

@@ -1,68 +1,44 @@
-# ActSiamMAE
+# Skill-JEPA
+## Predictive World Models over Latent Action Manifolds
 
-Unsupervised Active Visual Exploration using SiamMAE and Generalized Velocity.
+Most world models drown in physical friction, attempting to simulate the future one motor torque at a time. Skill-JEPA bypasses this computational trap via temporal abstraction. By bottlenecking physical action chunks into pure latent intents using a state-conditioned Action VAE, the predictive architecture leaps across time in macro-steps. Instead of unrolling a standard autoregressive transition $P(z_{t+1} | z_t, a_t)$ for $K$ discrete frames, Skill-JEPA evaluates a single jump: $P(\hat{z}_{t+K} | z_t, w)$, where $w$ is the compressed skill.
 
-## Installation
+## Architectural Core
+* **The Vision Manifold:** Standardized state embedding via headless ViT backbones ($z_t$).
+* **The Action Bottleneck:** A Transformer-based VAE that compresses $K$-step physical trajectories into an isotropic Gaussian skill space.
+* **The Temporal Leap:** A jumpy JEPA predictor that maps the physical anchor and the latent intent directly to the future state manifold.
+* **The Stabilizer:** Latent collapse is prevented using a single-weight Sketch Isotropic Gaussian Regularizer (SIGReg), eliminating the need for complex multi-term variance/covariance penalties.
 
-Clone the repository and install the project in editable mode:
+---
+
+## Setup & Installation
+
+Skill-JEPA requires Python 3.10 or higher.
+
+**1. Clone the repository**
+```bash
+git clone [https://github.com/your-username/skill-jepa.git](https://github.com/your-username/skill-jepa.git)
+cd skill-jepa
+```
+
+2. Install core dependencies
+Install the local package in editable mode. This handles the architectural graph, including PyTorch, Lightning, and Einops.
 
 ```bash
 pip install -e .
 ```
 
-## Data Generation
-
-Generate synthetic datasets of 3D Platonic solids with controlled camera trajectories:
-
-```bash
-python generate_poly_dataset.py \
-  --num_trajs 100 \
-  --shard_size 50 \
-  --length 20 \
-  --resolution 224 \
-  --output_dir ./data/medium \
-  --shape icosahedron
-```
-
-### Available Shapes
-
-- `tetrahedron`
-- `cube`
-- `octahedron`
-- `dodecahedron`
-- `icosahedron`
-- `mixed` (randomly samples from all shapes)
-
-### Generation Options
-
-- `--num_trajs`: Number of trajectories to generate
-- `--shard_size`: Trajectories per shard file
-- `--length`: Steps per trajectory
-- `--resolution`: Image resolution (square)
-- `--monochromatic`: Use white meshes with edges only
-- `--repeated_vel`: Use repeated velocity trajectory pattern
-
-Each trajectory consists of rendered images, camera actions (velocity), camera states, and shape identifiers, saved as compressed `.npz` files.
-
-## Training
-
-To start training, point to a configuration file:
+3. Mount the Data Backend & Solvers
+To leverage the high-bandwidth HDF5 memory-mapped trajectory slicing and the inference planners (like the Cross-Entropy Method), install the required stable-worldmodel dependencies directly from source:
 
 ```bash
-python src/train.py --config training_configs/laptop_test.yaml
+pip install git+[https://github.com/galilai-group/stable-pretraining.git](https://github.com/galilai-group/stable-pretraining.git)
+pip install git+[https://github.com/galilai-group/stable-worldmodel.git](https://github.com/galilai-group/stable-worldmodel.git)
 ```
 
-## Monitoring
-
-Metrics are synced to Weights & Biases. To authenticate a new environment:
+## Training and evaluation
 
 ```bash
-wandb login
+python src/train.py model=jumpy training.batch_size=64
+python src/eval.py ++ckpt_path=/path/to/your/model.ckpt
 ```
-
-## Stack
-
-- **Core**: PyTorch / PyTorch Lightning
-- **Tracking**: Weights & Biases (WandB)
-- **Config**: YAML / Python Dataclasses
-- **Data Generation**: PyVista, NumPy

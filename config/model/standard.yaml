@@ -1,0 +1,22 @@
+vision:
+  model_name: "vit_b_16"
+  frame_size: 224
+  num_channels: 3
+  hidden_dim: 768
+
+action:
+  space_dim: 3
+  sequence_length: 64
+  hidden_dim: 64
+  num_layers: 2
+  num_attn_heads: 8
+  mlp_ratio: 4
+
+predictor:
+  mode: "standard"
+  num_layers: 4
+  num_attn_heads: 12
+  dropout: 0.0
+  emb_dropout: 0.0
+  dim_head: 64
+  mlp_ratio: 4

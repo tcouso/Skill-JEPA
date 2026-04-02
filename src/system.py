@@ -19,26 +19,30 @@ class ModelSystem(pl.LightningModule):
         self.config = config
 
         self.vision_encoder = VisionEncoder(
-            model_name=config.vision_model_name, 
-            target_hidden_dim=config.obs_encoder_hidden_dim
+            model_name=config.vision.model_name, 
+            target_hidden_dim=config.vision.hidden_dim
         )
-        
-        self.sigreg = SIGReg()
-        self.sigreg_weight = 1.0 # Lambda for SIGReg
-        self.beta_weight = 0.01  # Beta for VAE KL Divergence
 
-        if config.predictor_mode == "jumpy":
+        self.sigreg = SIGReg(
+            knots=config.training.sigreg_knots,
+            num_proj=config.training.sigreg_num_proj
+        )
+        self.sigreg_weight = config.training.sigreg_weight
+        self.beta_weight = config.training.beta_weight
+
+        if config.predictor.mode == "jumpy":
             self.action_encoder = ActionAutoencoder(config)
-            
-            # Predictor must map from VAE latent dim (64) to Vision dim (768)
-            # The context `c` here is the compressed skill `w`
+
             self.predictor = ARPredictor(
-                num_frames=config.action_sequence_length,
-                depth=config.decoder_num_layers,
-                heads=config.obs_encoder_num_attn_heads,
-                mlp_dim=config.obs_encoder_hidden_dim * 4,
-                input_dim=config.obs_encoder_hidden_dim,
-                hidden_dim=config.obs_encoder_hidden_dim,
+                num_frames=config.action.sequence_length,
+                depth=config.predictor.num_layers,
+                heads=config.predictor.num_attn_heads,
+                mlp_dim=config.vision.hidden_dim * config.predictor.mlp_ratio,
+                input_dim=config.vision.hidden_dim,
+                hidden_dim=config.vision.hidden_dim,
+                dim_head=config.predictor.dim_head,
+                dropout=config.predictor.dropout,
+                emb_dropout=config.predictor.emb_dropout,
             )
             self.jepa = SkillJEPA(
                 config=config,
@@ -48,14 +52,18 @@ class ModelSystem(pl.LightningModule):
             )
         else:
             self.predictor = ARPredictor(
-                num_frames=config.action_sequence_length,
-                depth=config.decoder_num_layers,
-                heads=config.obs_encoder_num_attn_heads,
-                mlp_dim=config.obs_encoder_hidden_dim * 4,
-                input_dim=config.obs_encoder_hidden_dim,
-                hidden_dim=config.obs_encoder_hidden_dim,
+                num_frames=config.action.sequence_length,
+                depth=config.predictor.num_layers,
+                heads=config.predictor.num_attn_heads,
+                mlp_dim=config.vision.hidden_dim * config.predictor.mlp_ratio,
+                input_dim=config.vision.hidden_dim,
+                hidden_dim=config.vision.hidden_dim,
+                dim_head=config.predictor.dim_head,
+                dropout=config.predictor.dropout,
+                emb_dropout=config.predictor.emb_dropout,
             )
             self.jepa = StandardJEPA(
+                config=config,
                 encoder=self.vision_encoder,
                 predictor=self.predictor
             )
@@ -71,40 +79,40 @@ class ModelSystem(pl.LightningModule):
 
         # 1. Forward Pass (Encode and Predict)
         output = self.jepa.encode(batch)
-        
+
         emb = output["emb"]  # (B, T, D)
         act_emb = output["act_emb"]
 
         # 2. Predictive Loss Setup
-        ctx_len = 1 # Assuming a history size of 1 for now, adjust as needed
+        ctx_len = self.config.dataset.history_size
         ctx_emb = emb[:, :ctx_len]
         ctx_act = act_emb[:, :ctx_len]
-        
+
         tgt_emb = emb[:, ctx_len:]
         pred_emb = self.jepa.predict(ctx_emb, ctx_act)
 
         # 3. Loss Calculations
         pred_loss = F.mse_loss(pred_emb, tgt_emb)
         sigreg_loss = self.sigreg(emb.transpose(0, 1))
-        
+
         total_loss = pred_loss + self.sigreg_weight * sigreg_loss
         losses = {"pred_loss": pred_loss, "sigreg_loss": sigreg_loss}
 
         # 4. VAE Losses (if jumpy)
-        if self.config.predictor_mode == "jumpy":
+        if self.config.predictor.mode == "jumpy":
             recon_actions = output["recon_actions"]
             mu = output["mu"]
             logvar = output["logvar"]
-            
+
             # Reconstruction Loss
             recon_loss = F.mse_loss(recon_actions, batch["action"])
-            
+
             # KL Divergence: -0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
             kld_loss = torch.mean(-0.5 * torch.sum(1 + logvar - mu ** 2 - logvar.exp(), dim = 1), dim = 0)
 
             vae_loss = recon_loss + self.beta_weight * kld_loss
             total_loss += vae_loss
-            
+
             losses.update({"recon_loss": recon_loss, "kld_loss": kld_loss})
 
         losses["loss"] = total_loss
@@ -117,7 +125,7 @@ class ModelSystem(pl.LightningModule):
             on_step=True,
             on_epoch=True,
             prog_bar=True,
-            batch_size=self.config.batch_size
+            batch_size=self.config.training.batch_size
         )
         return losses["loss"]
 
@@ -129,14 +137,14 @@ class ModelSystem(pl.LightningModule):
             on_epoch=True,
             prog_bar=True,
             sync_dist=True,
-            batch_size=self.config.batch_size
+            batch_size=self.config.training.batch_size
         )
         return losses["loss"]
 
     def configure_optimizers(self) -> OptimizerLRScheduler:
         decay_params = []
         no_decay_params = []
-        
+
         for name, param in self.named_parameters():
             if not param.requires_grad:
                 continue
@@ -146,19 +154,19 @@ class ModelSystem(pl.LightningModule):
                 decay_params.append(param)
 
         optim_groups = [
-            {"params": decay_params, "weight_decay": self.config.weight_decay},
+            {"params": decay_params, "weight_decay": self.config.training.weight_decay},
             {"params": no_decay_params, "weight_decay": 0.0},
         ]
 
         optimizer = torch.optim.AdamW(
             optim_groups,
-            lr=self.config.base_learning_rate,
-            betas=self.config.betas,
+            lr=self.config.training.base_learning_rate,
+            betas=self.config.training.betas,
         )
 
-        decay_epochs = self.config.max_epochs - self.config.warmup_epochs
+        decay_epochs = self.config.training.max_epochs - self.config.training.warmup_epochs
         warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
-            optimizer, start_factor=1e-6, total_iters=self.config.warmup_epochs
+            optimizer, start_factor=1e-6, total_iters=self.config.training.warmup_epochs
         )
         cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=decay_epochs, eta_min=0.0
@@ -166,7 +174,7 @@ class ModelSystem(pl.LightningModule):
         scheduler = torch.optim.lr_scheduler.SequentialLR(
             optimizer,
             schedulers=[warmup_scheduler, cosine_scheduler],
-            milestones=[self.config.warmup_epochs],
+            milestones=[self.config.training.warmup_epochs],
         )
 
         return {

@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "active-siam-mae"
+name = "skill-jepa"
 version = "0.1.0"
-description = "Unsupervised Active Visual Exploration using SiamMAE and Generalized Velocity"
+description = "A Predictive World Model over Latent Action Manifolds (Macro-Steps)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -14,23 +14,26 @@ authors = [
 ]
 
 dependencies = [
-    "numpy",
-    "matplotlib",
-    "scipy",
+    # Core Machine Learning
     "torch>=2.0.0",
     "torchvision",
     "pytorch-lightning",
+    "einops",          # Crucial for JEPA tensor routing
+    
+    # Utilities & Configuration
+    "numpy",
+    "scipy",
+    "scikit-learn",    # Required for SWM normalizers (StandardScaler)
+    "hydra-core",      # Required for the eval.py solver instantiation
+    "omegaconf",       # Configuration management for Hydra
     "pyyaml",
+    
+    # Data & Logging
+    "h5py",            # Core backend for stable-worldmodel
     "wandb",
-    "pyrender",
-    "trimesh",
-    "pyglet<2",
     "tqdm",
     "pillow",
-    "timm",        
-    "networkx",
-    "pyvista",
-    "webdataset"
+    "matplotlib"
 ]
 
 [project.optional-dependencies]

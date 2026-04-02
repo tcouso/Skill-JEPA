@@ -1,0 +1,13 @@
+defaults:
+  - model: standard
+  - dataset: tworoom
+  - training: default
+  - eval: default
+  - solver: cem
+  - _self_
+
+seed: 42
+device: "cuda"
+accelerator: "gpu"
+devices: -1
+strategy: "ddp"
