@@ -54,6 +54,15 @@ python scripts/downlad_data.py --data-dir /mnt/storage/datasets
 
 Data is saved under `<data-dir>/lewm-<name>/` (default: `data/datasets/`).
 
+After downloading, extract the archive inside the dataset directory:
+
+```bash
+cd <data-dir>/lewm-tworooms/
+tar --zstd -xvf tworoom.tar.zst
+```
+
+This produces the `.h5` file that the dataloader reads. Repeat for each dataset, adjusting the directory and archive name accordingly.
+
 ## Training and evaluation
 
 ```bash
