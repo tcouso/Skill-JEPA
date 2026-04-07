@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
-import torchvision.models as tv_models
 from typing import Tuple, Optional, Type
 
 from src.config import ModelConfig
@@ -21,7 +20,7 @@ class SIGReg(nn.Module):
         weights = torch.full((knots,), 2 * dt, dtype=torch.float32)
         weights[[0, -1]] = dt
         window = torch.exp(-t.square() / 2.0)
-        
+
         self.register_buffer("t", t)
         self.register_buffer("phi", window)
         self.register_buffer("weights", weights * window)
@@ -52,14 +51,16 @@ class FeedForward(nn.Module):
 
 
 class Attention(nn.Module):
-    def __init__(self, dim: int, heads: int = 8, dim_head: int = 64, dropout: float = 0.0):
+    def __init__(
+        self, dim: int, heads: int = 8, dim_head: int = 64, dropout: float = 0.0
+    ):
         super().__init__()
         inner_dim = dim_head * heads
         project_out = not (heads == 1 and dim_head == dim)
         self.heads = heads
-        self.scale = dim_head ** -0.5
+        self.scale = dim_head**-0.5
         self.dropout = dropout
-        
+
         self.norm = nn.LayerNorm(dim)
         self.attend = nn.Softmax(dim=-1)
         self.to_qkv = nn.Linear(dim, inner_dim * 3, bias=False)
@@ -74,14 +75,16 @@ class Attention(nn.Module):
         drop = self.dropout if self.training else 0.0
         qkv = self.to_qkv(x).chunk(3, dim=-1)
         q, k, v = (rearrange(t, "b t (h d) -> b h t d", h=self.heads) for t in qkv)
-        
+
         out = F.scaled_dot_product_attention(q, k, v, dropout_p=drop, is_causal=causal)
         out = rearrange(out, "b h t d -> b t (h d)")
         return self.to_out(out)
 
 
 class ConditionalBlock(nn.Module):
-    def __init__(self, dim: int, heads: int, dim_head: int, mlp_dim: int, dropout: float = 0.0):
+    def __init__(
+        self, dim: int, heads: int, dim_head: int, mlp_dim: int, dropout: float = 0.0
+    ):
         super().__init__()
         self.attn = Attention(dim, heads=heads, dim_head=dim_head, dropout=dropout)
         self.mlp = FeedForward(dim, mlp_dim, dropout=dropout)
@@ -104,7 +107,9 @@ class ConditionalBlock(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self, dim: int, heads: int, dim_head: int, mlp_dim: int, dropout: float = 0.0):
+    def __init__(
+        self, dim: int, heads: int, dim_head: int, mlp_dim: int, dropout: float = 0.0
+    ):
         super().__init__()
         self.attn = Attention(dim, heads=heads, dim_head=dim_head, dropout=dropout)
         self.mlp = FeedForward(dim, mlp_dim, dropout=dropout)
@@ -134,14 +139,30 @@ class Transformer(nn.Module):
         self.norm = nn.LayerNorm(hidden_dim)
         self.layers = nn.ModuleList([])
 
-        self.input_proj = nn.Linear(input_dim, hidden_dim) if input_dim != hidden_dim else nn.Identity()
-        self.cond_proj = nn.Linear(input_dim, hidden_dim) if input_dim != hidden_dim else nn.Identity()
-        self.output_proj = nn.Linear(hidden_dim, output_dim) if hidden_dim != output_dim else nn.Identity()
+        self.input_proj = (
+            nn.Linear(input_dim, hidden_dim)
+            if input_dim != hidden_dim
+            else nn.Identity()
+        )
+        self.cond_proj = (
+            nn.Linear(input_dim, hidden_dim)
+            if input_dim != hidden_dim
+            else nn.Identity()
+        )
+        self.output_proj = (
+            nn.Linear(hidden_dim, output_dim)
+            if hidden_dim != output_dim
+            else nn.Identity()
+        )
 
         for _ in range(depth):
-            self.layers.append(block_class(hidden_dim, heads, dim_head, mlp_dim, dropout))
+            self.layers.append(
+                block_class(hidden_dim, heads, dim_head, mlp_dim, dropout)
+            )
 
-    def forward(self, x: torch.Tensor, c: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor, c: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         if hasattr(self, "input_proj"):
             x = self.input_proj(x)
 
@@ -150,7 +171,7 @@ class Transformer(nn.Module):
 
         for block in self.layers:
             x = block(x) if isinstance(block, Block) else block(x, c)
-            
+
         x = self.norm(x)
 
         if hasattr(self, "output_proj"):
@@ -159,7 +180,13 @@ class Transformer(nn.Module):
 
 
 class Embedder(nn.Module):
-    def __init__(self, input_dim: int = 10, smoothed_dim: int = 10, emb_dim: int = 10, mlp_scale: int = 4):
+    def __init__(
+        self,
+        input_dim: int = 10,
+        smoothed_dim: int = 10,
+        emb_dim: int = 10,
+        mlp_scale: int = 4,
+    ):
         super().__init__()
         self.patch_embed = nn.Conv1d(input_dim, smoothed_dim, kernel_size=1, stride=1)
         self.embed = nn.Sequential(
@@ -233,28 +260,28 @@ class ARPredictor(nn.Module):
 
 
 class VisionEncoder(nn.Module):
-    def __init__(self, model_name: str = "vit_b_16", target_hidden_dim: int = 768):
+    _SCALE_CONFIGS = {
+        "tiny":  dict(hidden_size=192, num_hidden_layers=12, num_attention_heads=3,  intermediate_size=768),
+        "small": dict(hidden_size=384, num_hidden_layers=12, num_attention_heads=6,  intermediate_size=1536),
+        "base":  dict(hidden_size=768, num_hidden_layers=12, num_attention_heads=12, intermediate_size=3072),
+    }
+
+    def __init__(self, encoder_scale: str = "tiny", patch_size: int = 14, img_size: int = 224):
         super().__init__()
-        
-        # Load any torchvision model dynamically with default weights
-        self.vit = tv_models.get_model(model_name, weights="DEFAULT")
-        
-        # Strip the classification head (handles both ViT and ResNet paradigms)
-        if hasattr(self.vit, "heads"):
-            self.vit.heads = nn.Identity()
-        elif hasattr(self.vit, "fc"):
-            self.vit.fc = nn.Identity()
-            
-        # Dynamically calculate the backbone's native hidden dimension
-        with torch.no_grad():
-            dummy_tensor = torch.zeros(1, 3, 224, 224)
-            native_dim = self.vit(dummy_tensor).shape[-1]
-            
-        self.proj = nn.Linear(native_dim, target_hidden_dim) if native_dim != target_hidden_dim else nn.Identity()
+        from transformers import ViTConfig, ViTModel
+
+        scale_cfg = self._SCALE_CONFIGS[encoder_scale]
+        vit_config = ViTConfig(
+            image_size=img_size,
+            patch_size=patch_size,
+            **scale_cfg,
+        )
+        self.vit = ViTModel(vit_config)  # randomly initialized
+        self.native_dim: int = scale_cfg["hidden_size"]
 
     def forward(self, pixels: torch.Tensor) -> torch.Tensor:
-        features = self.vit(pixels)
-        return self.proj(features)
+        output = self.vit(pixels, interpolate_pos_encoding=True)
+        return output.last_hidden_state[:, 0]  # CLS token
 
 
 class ActionAutoencoder(nn.Module):
@@ -262,55 +289,72 @@ class ActionAutoencoder(nn.Module):
         super().__init__()
         self.action_sequence_length = config.action.sequence_length
         self.action_space_dim = config.action.space_dim
-        
+
         self.action_projection = nn.Sequential(
             nn.Linear(config.action.space_dim, config.action.hidden_dim),
             nn.LayerNorm(config.action.hidden_dim),
             nn.GELU(),
         )
-        
+
         self.state_projection = nn.Sequential(
-            nn.Linear(config.vision.hidden_dim, config.action.hidden_dim),
+            nn.Linear(config.vision.embed_dim, config.action.hidden_dim),
             nn.LayerNorm(config.action.hidden_dim),
-            nn.GELU()        
+            nn.GELU(),
         )
-        
+
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=config.action.hidden_dim,
             nhead=config.action.num_attn_heads,
             dim_feedforward=config.action.hidden_dim * config.action.mlp_ratio,
             activation="gelu",
             batch_first=True,
-            norm_first=True
+            norm_first=True,
         )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=config.action.num_layers)
-        
-        self.fc_mu = nn.Linear(config.action.hidden_dim, config.action.hidden_dim)
-        self.fc_logvar = nn.Linear(config.action.hidden_dim, config.action.hidden_dim)
-        
-        self.decoder = nn.Sequential(
-            nn.Linear(config.action.hidden_dim + config.vision.hidden_dim, config.vision.hidden_dim),
-            nn.GELU(),
-            nn.Linear(config.vision.hidden_dim, config.action.sequence_length * config.action.space_dim),
+        self.transformer = nn.TransformerEncoder(
+            encoder_layer, num_layers=config.action.num_layers
         )
 
-    def forward(self, actions: torch.Tensor, state_embedding: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:        
+        self.fc_mu = nn.Linear(config.action.hidden_dim, config.action.hidden_dim)
+        self.fc_logvar = nn.Linear(config.action.hidden_dim, config.action.hidden_dim)
+
+        self.decoder = nn.Sequential(
+            nn.Linear(
+                config.action.hidden_dim + config.vision.embed_dim,
+                config.vision.embed_dim,
+            ),
+            nn.GELU(),
+            nn.Linear(
+                config.vision.embed_dim,
+                config.action.sequence_length * config.action.space_dim,
+            ),
+        )
+
+    def forward(
+        self, actions: torch.Tensor, state_embedding: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         projected_actions = self.action_projection(actions)
         projected_states = self.state_projection(state_embedding)
-        
+
         sequence = torch.cat((projected_states.unsqueeze(1), projected_actions), dim=1)
         sequence = self.transformer(sequence)
 
         cls = sequence[:, 0, :]
         mu = self.fc_mu(cls)
         logvar = self.fc_logvar(cls)
-        
+
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
         latent = mu + eps * std
 
         state_and_latent = torch.cat((state_embedding, latent), dim=1)
         reconstructed_actions = self.decoder(state_and_latent)
-        reconstructed_actions = reconstructed_actions.view(-1, self.action_sequence_length, self.action_space_dim)
+        reconstructed_actions = reconstructed_actions.view(
+            -1, self.action_sequence_length, self.action_space_dim
+        )
 
         return latent, reconstructed_actions, mu, logvar
+
+
+# TODO: Try VQ-VAE as an alternative action encoder
+class VQActionAutoencoder(nn.Module):
+    ...

@@ -32,13 +32,13 @@ pip install -e .
 To leverage the high-bandwidth HDF5 memory-mapped trajectory slicing and the inference planners (like the Cross-Entropy Method), install the required stable-worldmodel dependencies directly from source:
 
 ```bash
-pip install git+[https://github.com/galilai-group/stable-pretraining.git](https://github.com/galilai-group/stable-pretraining.git)
-pip install git+[https://github.com/galilai-group/stable-worldmodel.git](https://github.com/galilai-group/stable-worldmodel.git)
+pip install git+https://github.com/galilai-group/stable-pretraining.git
+pip install git+https://github.com/galilai-group/stable-worldmodel.git
 ```
 
 ## Training and evaluation
 
 ```bash
-python src/train.py model=jumpy training.batch_size=64
+python src/train.py predictor.mode=jumpy training.batch_size=2
 python src/eval.py ++ckpt_path=/path/to/your/model.ckpt
 ```

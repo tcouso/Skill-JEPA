@@ -1,0 +1,28 @@
+# @package _global_
+# Minimal smoke-test config for CPU machines.
+# Usage: WANDB_MODE=disabled python src/train.py +experiment=local_test
+
+accelerator: cpu
+devices: 1
+strategy: auto
+
+predictor:
+  mode: standard
+  num_layers: 2
+  num_attn_heads: 3
+  mlp_dim: 256
+  dim_head: 32
+  dropout: 0.0
+
+dataset:
+  history_size: 3
+  pred_horizon: 2
+  num_workers: 8
+
+training:
+  batch_size: 2
+  max_epochs: 1
+  warmup_epochs: 0
+  log_every_n_steps: 1
+  limit_train_batches: 1
+  limit_val_batches: 1

@@ -1,5 +1,0 @@
-name: "tworoom"
-frameskip: 5
-history_size: 1
-train_split: 0.95
-num_workers: 4

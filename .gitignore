@@ -12,11 +12,15 @@ checkpoints/
 lightning_logs/
 tb_logs/
 wandb/
+outputs/
 
 # Data & Configs (usually kept local)
 data/
-GEMINI.md
 
+# Agent configs
+GEMINI.md
+CLAUDE.md
+.claude/
 
 # Notebooks
 notebooks/

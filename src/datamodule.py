@@ -5,23 +5,24 @@ from typing import Optional
 
 import stable_worldmodel as swm
 import stable_pretraining as spt
-from utils import get_column_normalizer, get_img_preprocessor
-from src.config import ModelConfig
+from src.utils import get_column_normalizer, get_img_preprocessor
+
+from src.config import JEPAConfig
 
 
 class LeWMDataModule(pl.LightningDataModule):
-    def __init__(self, config: ModelConfig):
+    def __init__(self, config: JEPAConfig):
         super().__init__()
         self.config = config
-        self.dataset_name = config.dataset.name
+        self.dataset_name = config.dataset.env_name
         self.frameskip = config.dataset.frameskip
         self.history_size = config.dataset.history_size
-        self.num_preds = config.action.sequence_length
+        self.pred_horizon = config.dataset.pred_horizon
         self.batch_size = config.training.batch_size
         self.num_workers = config.dataset.num_workers
         self.train_split = config.dataset.train_split
         self.seed = config.seed
-        self.img_size = config.vision.frame_size
+        self.img_size = config.dataset.frame_size
 
         self.train_dataset: Optional[torch.utils.data.Dataset] = None
         self.val_dataset: Optional[torch.utils.data.Dataset] = None
@@ -30,31 +31,36 @@ class LeWMDataModule(pl.LightningDataModule):
         if self.train_dataset is not None and self.val_dataset is not None:
             return
 
-        total_steps = self.history_size + self.num_preds
+        num_steps = self.history_size + self.pred_horizon
 
         base_dataset = swm.data.HDF5Dataset(
             name=self.dataset_name,
-            num_steps=total_steps,
+            num_steps=num_steps,
             frameskip=self.frameskip,
             keys_to_load=["pixels", "action", "proprio"],
             keys_to_cache=["action", "proprio"],
-            transform=None
+            transform=None,
+            cache_dir=self.config.dataset.cache_dir
         )
 
-        transforms = [get_img_preprocessor(source="pixels", target="pixels", img_size=self.img_size)]
+        transforms = [
+            get_img_preprocessor(
+                source="pixels", target="pixels", img_size=self.img_size
+            )
+        ]
 
         for col in ["action", "proprio"]:
             normalizer = get_column_normalizer(base_dataset, col, col)
             transforms.append(normalizer)
-            setattr(self.config, f"{col}_dim", base_dataset.get_dim(col))
+            setattr(self.config.dataset, f"{col}_dim", base_dataset.get_dim(col))
 
         base_dataset.transform = spt.data.transforms.Compose(*transforms)
 
         rnd_gen = torch.Generator().manual_seed(self.seed)
         self.train_dataset, self.val_dataset = spt.data.random_split(
-            base_dataset, 
-            lengths=[self.train_split, 1.0 - self.train_split], 
-            generator=rnd_gen
+            base_dataset,
+            lengths=[self.train_split, 1.0 - self.train_split],
+            generator=rnd_gen,
         )
 
     def train_dataloader(self) -> DataLoader:
@@ -66,7 +72,7 @@ class LeWMDataModule(pl.LightningDataModule):
             num_workers=self.num_workers,
             drop_last=True,
             pin_memory=True,
-            generator=rnd_gen
+            generator=rnd_gen,
         )
 
     def val_dataloader(self) -> DataLoader:
@@ -76,5 +82,5 @@ class LeWMDataModule(pl.LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
             drop_last=False,
-            pin_memory=True
+            pin_memory=True,
         )

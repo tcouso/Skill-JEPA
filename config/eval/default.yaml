@@ -1,7 +1,0 @@
-dataset_name: "tworoom"
-eval_budget: 100
-goal_offset_steps: 50
-num_eval: 10
-img_size: 224
-cache_dir: null
-num_eval_episodes: 10
