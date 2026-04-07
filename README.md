@@ -47,9 +47,12 @@ python scripts/downlad_data.py
 # Download a specific subset
 python scripts/downlad_data.py --datasets tworooms
 python scripts/downlad_data.py --datasets cube pusht
+
+# Custom download directory (e.g. on a cluster storage mount)
+python scripts/downlad_data.py --data-dir /mnt/storage/datasets
 ```
 
-Data is saved under `data/datasets/lewm-<name>/`.
+Data is saved under `<data-dir>/lewm-<name>/` (default: `data/datasets/`).
 
 ## Training and evaluation
 
