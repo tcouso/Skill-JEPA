@@ -36,9 +36,33 @@ pip install git+https://github.com/galilai-group/stable-pretraining.git
 pip install git+https://github.com/galilai-group/stable-worldmodel.git
 ```
 
+## Data
+
+Download datasets from the [le-wm HuggingFace collection](https://huggingface.co/collections/quentinll/lewm):
+
+```bash
+# Download all datasets (tworooms, cube, pusht, reacher)
+python scripts/downlad_data.py
+
+# Download a specific subset
+python scripts/downlad_data.py --datasets tworooms
+python scripts/downlad_data.py --datasets cube pusht
+```
+
+Data is saved under `data/datasets/lewm-<name>/`.
+
 ## Training and evaluation
 
 ```bash
-python src/train.py predictor.mode=jumpy training.batch_size=2
+# Full training (cluster)
+python src/train.py predictor.mode=jumpy
+
+# Local CPU smoke test (no wandb)
+WANDB_MODE=disabled python src/train.py +experiment=local_test
+
+# Evaluation
 python src/eval.py ++ckpt_path=/path/to/your/model.ckpt
+
+# Ad-hoc overrides
+python src/train.py training.batch_size=4 predictor.mode=standard
 ```
