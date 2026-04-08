@@ -10,6 +10,8 @@
 #SBATCH --cpus-per-task=16
 #SBATCH --mem=128G
 
+cd /home/tcouso/Skill-JEPA || exit 1
+
 echo "[$(date)] JOB_ID: $SLURM_JOB_ID | NODE: $SLURM_NODELIST"
 echo "[$(date)] Allocated GPUs: $CUDA_VISIBLE_DEVICES"
 
