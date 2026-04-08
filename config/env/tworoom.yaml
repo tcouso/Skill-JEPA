@@ -1,0 +1,8 @@
+# @package _global_
+
+dataset:
+  env_name: tworoom
+
+action:
+  space_dim: 2
+  sequence_length: 2
