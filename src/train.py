@@ -4,6 +4,7 @@ from omegaconf import DictConfig, OmegaConf
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.strategies import DDPStrategy
 
 from src.config import JEPAConfig
 from src.datamodule import LeWMDataModule
@@ -37,7 +38,7 @@ def main(cfg: DictConfig):
         max_epochs=config.training.max_epochs,
         accelerator=config.accelerator,
         devices=config.devices,
-        strategy=config.strategy if config.devices != 1 else "auto",
+        strategy=DDPStrategy(find_unused_parameters=True) if config.devices != 1 else "auto",
         callbacks=[checkpoint_callback],
         log_every_n_steps=config.training.log_every_n_steps,
         limit_train_batches=config.training.limit_train_batches,
