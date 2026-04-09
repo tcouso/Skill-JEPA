@@ -34,15 +34,13 @@ mkdir -p $XDG_CACHE_HOME $HF_HOME $TORCH_HOME $PIP_CACHE_DIR
 mkdir -p $WANDB_DIR $WANDB_CACHE_DIR $WANDB_CONFIG_DIR $WANDB_DATA_DIR
 mkdir -p logs
 
-source /workspace1/tcouso/envs/skill-jepa-env/bin/activate
-
 set -a
 source .env
 set +a
 
-python -c "import torch; print(f'Torch CUDA available: {torch.cuda.is_available()}'); print(f'Device Name: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"None\"}')"
+uv run python -c "import torch; print(f'Torch CUDA available: {torch.cuda.is_available()}'); print(f'Device Name: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"None\"}')"
 
-srun python -u src/train.py \
+srun uv run python -u src/train.py \
     predictor.mode=standard \
     dataset.env_name=lewm-tworooms \
     dataset.cache_dir=/workspace1/tcouso/skill-jepa/datasets
