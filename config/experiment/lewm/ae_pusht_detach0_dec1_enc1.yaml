@@ -1,0 +1,13 @@
+# @package _global_
+
+defaults:
+  - override /env: pusht
+  - override /action_encoder: ae
+  - _self_
+
+action:
+  encoder_pos_embedding: false
+  detach_state_conditioning: false
+  detach_action_conditioning: false
+  decoder_state_conditioning: true
+  encoder_state_conditioning: true

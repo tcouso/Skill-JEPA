@@ -1,0 +1,6 @@
+# @package _global_
+
+defaults:
+  - override /env: reacher
+  - override /action_encoder: none
+  - _self_

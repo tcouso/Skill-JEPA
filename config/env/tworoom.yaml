@@ -1,0 +1,4 @@
+# @package _global_
+
+dataset:
+  dataset_path: data/datasets/lewm-tworooms.h5

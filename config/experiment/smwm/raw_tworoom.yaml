@@ -1,0 +1,9 @@
+# @package _global_
+
+defaults:
+  - override /action_encoder: none
+  - _self_
+
+regularizer: smwm
+smwm:
+  inverse_weight: 0.1

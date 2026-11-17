@@ -1,0 +1,12 @@
+# @package _global_
+
+defaults:
+  - override /env: pusht
+  - override /action_encoder: vae
+  - _self_
+
+action:
+  detach_state_conditioning: false
+  detach_action_conditioning: false
+  decoder_state_conditioning: true
+  encoder_state_conditioning: true

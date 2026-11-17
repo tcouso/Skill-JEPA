@@ -1,0 +1,5 @@
+# @package _global_
+
+defaults:
+  - override /action_encoder: none
+  - _self_

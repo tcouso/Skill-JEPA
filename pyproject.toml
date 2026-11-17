@@ -1,0 +1,80 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skill-jepa"
+version = "0.1.0"
+description = "A Predictive World Model over Latent Action Manifolds (Macro-Steps)"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+
+dependencies = [
+    # Core Machine Learning
+    "torch>=2.0.0",
+    "torchvision",
+    "pytorch-lightning",
+    "einops",          # Crucial for JEPA tensor routing
+    # Utilities & Configuration
+    "numpy",
+    "scipy",
+    "scikit-learn", # Required for SWM normalizers (StandardScaler)
+    "hydra-core", # Required for the eval.py solver instantiation
+    "omegaconf", # Configuration management for Hydra
+    "pyyaml",
+    # Data & Logging
+    "h5py",
+    "hdf5plugin", # Required for stable-worldmodel HDF5 format registration
+    "wandb",
+    "tqdm",
+    "pillow",
+    "matplotlib",
+    "pandas", # Required by scripts/pull_sweep_results.py
+    "stable-worldmodel",
+    "huggingface-hub",
+    "transformers",
+    "imageio[ffmpeg]",
+    "opencv-python-headless",
+    "pygame", # Required by stable-worldmodel's PushT env (rendering)
+    "pymunk", # Required by stable-worldmodel's PushT env (physics)
+    "shapely", # Required by stable-worldmodel's PushT env (envs/utils.py DrawOptions)
+    "ogbench>=1.2.1",
+    "dm-control", # Required by stable-worldmodel's Reacher env (dm_control.suite.reacher).
+    # Already present transitively via ogbench, but declared because Reacher does not
+    # otherwise depend on ogbench — dropping cube would silently break reacher.
+]
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "ruff",
+    "pre-commit",
+    "jupyter",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]  # line length enforced by black
+
+[[tool.uv.index]]
+name = "pytorch-cu118"
+url = "https://download.pytorch.org/whl/cu118"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu118" }
+torchvision = { index = "pytorch-cu118" }
+stable-worldmodel = { git = "https://github.com/galilai-group/stable-worldmodel.git" }

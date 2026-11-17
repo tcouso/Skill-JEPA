@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+
+checkpoints/
+lightning_logs/
+outputs/
+multirun/
+wandb/
+results/
+data/

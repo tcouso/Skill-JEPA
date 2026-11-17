@@ -1,0 +1,5 @@
+# @package observation_encoder
+_target_: src.modules.observation.VisionEncoder
+encoder_scale: ${vision.encoder_scale}
+patch_size: ${vision.patch_size}
+img_size: ${dataset.frame_size}

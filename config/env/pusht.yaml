@@ -1,0 +1,12 @@
+# @package _global_
+
+dataset:
+  dataset_path: data/datasets/lewm-pusht.h5
+
+world:
+  env_name: swm/PushT-v1
+
+evaluation:
+  # PushT's proprio is agent-only; its _set_state indexes the block pose too.
+  state_key: state
+  goal_state_key: goal_state

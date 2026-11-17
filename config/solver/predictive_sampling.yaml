@@ -1,0 +1,7 @@
+# @package solver
+_target_: stable_worldmodel.solver.PredictiveSamplingSolver
+batch_size: 1
+num_samples: 9000
+noise_scale: 1.0
+device: ${device}
+seed: ${seed}

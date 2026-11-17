@@ -1,0 +1,40 @@
+# @package _global_
+
+dataset:
+  dataset_path: data/datasets/lewm-antmaze.h5
+  keys_to_load: [pixels, action, proprio]
+  keys_to_cache: [action, proprio]
+
+action:
+  space_dim: 8
+
+# proprio is qpos then qvel; start: 2 drops the global xy, as in H-JEPA.
+proprio:
+  dim: 27
+  start: 2
+
+world:
+  env_name: swm/OGBAntMaze-v0
+  env_kwargs:
+    maze_type: medium
+    ob_type: pixels
+    width: 64
+    height: 64
+    camera_name: back
+    terminate_at_goal: true
+
+evaluation:
+  goal_cell_distance: 2
+  goal_offset_steps: 52
+  # Offsets from src/antmaze_goal_offsets.py.
+  sweep_goal_cell_distances: [1, 2, 3, 4]
+  sweep_goal_offsets: [32, 52, 64, 84]
+  # World calls these on env.unwrapped, OGBench's MazeEnv, not the H-JEPA wrapper.
+  state_callables:
+    - method: set_state
+      args:
+        qpos: {value: qpos}
+        qvel: {value: qvel}
+    - method: set_goal
+      args:
+        goal_xy: {value: goal_xy}

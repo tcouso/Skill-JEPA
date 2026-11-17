@@ -1,0 +1,14 @@
+# @package _global_
+
+defaults:
+  - override /env: antmaze
+  - override /action_encoder: vae
+  - _self_
+
+action:
+  encoder_pos_embedding: false
+  skill_dim: 16
+  detach_state_conditioning: false
+  detach_action_conditioning: false
+  decoder_state_conditioning: true
+  encoder_state_conditioning: true

@@ -1,0 +1,7 @@
+defaults:
+  - base_config
+  - env: tworoom
+  - solver: cem
+  - observation_encoder: vit_tiny
+  - action_encoder: none
+  - _self_

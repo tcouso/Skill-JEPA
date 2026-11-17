@@ -1,0 +1,35 @@
+# @package _global_
+
+dataset:
+  dataset_path: data/datasets/lewm-cube.h5
+  # Cube has no bare `proprio` column.
+  keys_to_load: [pixels, action, observation]
+  keys_to_cache: [action, observation]
+
+action:
+  space_dim: 5
+
+world:
+  env_name: swm/OGBCube-v0
+  env_kwargs:
+    env_type: single
+    ob_type: states
+    multiview: false
+    width: 224
+    height: 224
+    terminate_at_goal: true
+    # ManipSpaceEnv defaults to True, drawing the goal-position marker that the dataset frames lack.
+    visualize_info: false
+
+evaluation:
+  # World synthesizes goal_<col> from the dataset row at start + goal_offset.
+  state_callables:
+    - method: set_state
+      args:
+        qpos: {value: qpos}
+        qvel: {value: qvel}
+    - method: set_target_pos
+      args:
+        cube_id: {value: 0, in_dataset: false}
+        target_pos: {value: goal_privileged_block_0_pos}
+        target_quat: {value: goal_privileged_block_0_quat}

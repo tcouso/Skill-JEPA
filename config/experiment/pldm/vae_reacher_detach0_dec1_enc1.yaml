@@ -1,0 +1,15 @@
+# @package _global_
+
+defaults:
+  - override /env: reacher
+  - override /action_encoder: vae
+  - _self_
+
+action:
+  encoder_pos_embedding: false
+  detach_state_conditioning: false
+  detach_action_conditioning: false
+  decoder_state_conditioning: true
+  encoder_state_conditioning: true
+
+regularizer: pldm

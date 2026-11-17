@@ -1,0 +1,14 @@
+# @package _global_
+
+defaults:
+  - override /env: cube
+  - override /action_encoder: vae
+  - _self_
+
+action:
+  skill_dim: 10
+  detach_state_conditioning: false
+  detach_action_conditioning: false
+  detach_action_decoding: true
+  decoder_state_conditioning: true
+  encoder_state_conditioning: true

@@ -1,0 +1,10 @@
+# @package _global_
+
+defaults:
+  - override /env: cube
+  - override /action_encoder: none
+  - _self_
+
+regularizer: smwm
+smwm:
+  inverse_weight: 1.0

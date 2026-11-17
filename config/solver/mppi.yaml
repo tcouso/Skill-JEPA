@@ -1,0 +1,10 @@
+# @package solver
+_target_: stable_worldmodel.solver.MPPISolver
+batch_size: 1
+num_samples: 300
+var_scale: 1.0
+n_steps: 30
+topk: null
+temperature: 0.5
+device: ${device}
+seed: ${seed}

@@ -1,0 +1,5 @@
+# @package _global_
+action_encoder: none
+
+action:
+  representation: raw

@@ -1,0 +1,12 @@
+# @package _global_
+
+defaults:
+  - override /action_encoder: vae
+  - _self_
+
+action:
+  detach_state_conditioning: false
+  detach_action_conditioning: false
+  detach_action_decoding: true
+  decoder_state_conditioning: true
+  encoder_state_conditioning: true

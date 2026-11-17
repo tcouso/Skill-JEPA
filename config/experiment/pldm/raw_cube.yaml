@@ -1,0 +1,8 @@
+# @package _global_
+
+defaults:
+  - override /env: cube
+  - override /action_encoder: none
+  - _self_
+
+regularizer: pldm

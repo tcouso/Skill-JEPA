@@ -1,0 +1,25 @@
+#!/bin/bash
+# Planning sweeps for train_main.sh's checkpoints. Extra arguments go to eval_sweep.py.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+export MUJOCO_GL="${MUJOCO_GL:-egl}"
+
+GRID=(
+    "evaluation.sweep_conditions=[terminal_open_loop]"
+    "evaluation.sweep_goal_offsets=[20,40,60,80]"
+    "evaluation.num_eval=100"
+)
+
+sweep() {  # sweep <experiment> <seed> [hydra overrides...]
+    local exp="$1" seed="$2"; shift 2
+    uv run python src/eval_sweep.py +experiment="$exp" ++ckpt_path="checkpoints/${exp//\//_}_seed$seed/last.ckpt" "${GRID[@]}" "$@"
+}
+
+for seed in 42 43 44; do
+    for method in lewm pldm smwm; do
+        for env in tworoom pusht cube reacher; do
+            sweep "$method/raw_$env" "$seed" "$@"
+            sweep "$method/vae_${env}_detach0_dec1_enc1" "$seed" "$@"
+        done
+    done
+done
