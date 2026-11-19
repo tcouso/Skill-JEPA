@@ -1,5 +1,5 @@
 #!/bin/bash
-# Latent-action analysis: planning sweeps for the AE checkpoints and component evals for LeWM raw, VAE and AE. Needs train_main.sh and train_ae.sh. Extra arguments go to both eval scripts.
+# Latent-action analysis: planning sweeps for the AE checkpoints, whitened sweeps for AE and VAE, and component evals for LeWM raw, VAE and AE. Needs train_main.sh and train_ae.sh. Extra arguments go to both eval scripts.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export MUJOCO_GL="${MUJOCO_GL:-egl}"
@@ -23,6 +23,9 @@ components() {  # components <experiment> <seed> [hydra overrides...]
 for seed in 42 43 44; do
     for env in tworoom pusht cube reacher; do
         sweep "lewm/ae_${env}_detach0_dec1_enc1" "$seed" "$@"
+        for exp in "lewm/ae_${env}_detach0_dec1_enc1" "lewm/vae_${env}_detach0_dec1_enc1"; do
+            sweep "$exp" "$seed" evaluation.whiten_skill_space=true evaluation.eval_tag="${exp}_whiten" "$@"
+        done
         for exp in "lewm/raw_$env" "lewm/vae_${env}_detach0_dec1_enc1" "lewm/ae_${env}_detach0_dec1_enc1"; do
             components "$exp" "$seed" "$@"
         done

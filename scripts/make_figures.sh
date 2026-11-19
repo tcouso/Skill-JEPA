@@ -14,7 +14,7 @@ uv run python src/pull_sweep_results.py --output-dir "$OUT/antmaze" \
 
 uv run python src/pull_component_evals.py --output-dir "$OUT/latent_actions"
 uv run python src/pull_sweep_results.py --output-dir "$OUT/latent_actions" \
-    --match "^lewm/(raw|vae|ae)_$ENVS(_detach0_dec1_enc1)?_seed\d+$" \
+    --match "^lewm/(raw|vae|ae)_$ENVS(_detach0_dec1_enc1)?(_whiten)?_seed\d+$" \
     --execution --iteration0-kl
 
 uv run python src/pull_sweep_results.py --output-dir "$OUT/planners" --planner-delta \
